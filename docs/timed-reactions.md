@@ -67,6 +67,14 @@ On join, the server sends `reactions`: every reaction on the video, uncapped.
 - **Hotspots** (`hotspots()` in `reactions.ts`, drawn by `Timeline.tsx`). Under the timeline bar, busy moments show their most-thrown emoji, bigger and brighter the busier they are. Clicking one jumps to 2s before the burst, so it rains on the way in. The video is cut into 100 equal slices of time. Slicing never depends on screen size, so every viewer sees the same hotspots. A slice counts as a hotspot when it has at least 10% of the busiest slice's reactions. So a single reaction on a quiet video shows up, but one stray reaction next to a burst of thousands doesn't. The threshold is measured against the peak rather than the total, so a long video with reactions spread across it still shows its highlights. Busy slices with at most two quiet slices between them merge into one hotspot, and its tooltip shows the combined count. The only per-screen difference is on very narrow timelines (phones): when two hotspots would sit closer than 24px, only the stronger one is drawn.
 - **Switch.** "Show reactions" is on by default. It's saved in `localStorage` under `balcony.showReactions`, with reads and writes in try/catch. When it's off, the rain layer, the gutters and the hotspot row go away, but you can still throw.
 
+## Most reacted this week
+
+The landing page (after sign-in, with no video open) lists the 5 videos with the most reactions *thrown* in the last 7 days. That's counted by `createdAt`, not by where in the video they land.
+
+- **Query.** `ReactionStore.countsSince(since)` runs `SELECT c.videoId, c.emoji, COUNT(1) ... GROUP BY c.videoId, c.emoji` across partitions. That returns one row per video and emoji, not one per reaction. `rankMostReacted()` adds the rows up into totals and keeps each video's top 3 emoji. Ties are broken by code point and video ID so the order is stable.
+- **Caching.** Everyone shares one result for 5 minutes, so the cross-partition query runs at most 12 times an hour however many people open the page.
+- **Titles.** They come from YouTube's oEmbed endpoint (no API key or OAuth) and are kept in memory only, for 6 hours. A video YouTube won't describe, for example because it's private or deleted, still appears as "Untitled video".
+
 ## Open questions
 
 - **Volume.** There's a cap per person but no cap per video, so a popular video could collect thousands of reactions, all sent on join. That might call for loading them in windows around the playhead.

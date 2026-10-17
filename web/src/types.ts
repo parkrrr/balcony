@@ -38,3 +38,12 @@ export interface Reaction {
   emoji: string;
   videoTime: number;
 }
+
+/** A video on the landing page's "most reacted this week" list. */
+export interface MostReacted {
+  videoId: string;
+  title: string | null;
+  channel: string | null;
+  total: number;
+  top: { emoji: string; count: number }[];
+}
