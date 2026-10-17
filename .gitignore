@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+
+# OpenTofu
+.terraform/
+*.tfstate
+*.tfstate.*
+*.auto.tfvars
+tfplan
