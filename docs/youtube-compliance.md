@@ -41,9 +41,11 @@ The `/watch?v=` URL shape is still open.
 
 ### 3. Chat history keeps YouTube data longer than allowed
 
-Every message saved to Cosmos contains `name` and `avatar` (`server/src/chat.ts`, `server/src/store.ts`). Those values are the channel title and thumbnail returned by the Data API. Policy III.E.4.c allows storing that data *"for no longer than 30 calendar days. After 30 calendar days, the API Client must either delete or refresh the stored data."* Right now it is stored indefinitely.
+Every message saved to Cosmos contains `name` and `avatar` (`server/src/chat.ts`, `server/src/store.ts`). Those values are the channel title and thumbnail returned by the Data API. Policy III.E.4.c allows storing that data *"for no longer than 30 calendar days. After 30 calendar days, the API Client must either delete or refresh the stored data."*
 
-**Fix:** pick one.
+**Status (2026-10-17):** fixed with the second option. The messages container has a 30-day `default_ttl`, so every message, with its name and avatar, is deleted 30 days after it's sent. Applying it also removed any existing messages that were already older than 30 days.
+
+Options that were considered:
 
 - Store only `userId`/`channelId` with each message. Keep names and avatars in a separate per-user record that expires after 30 days (Cosmos TTL), and show a placeholder once it's gone.
 - Set a 30-day TTL on the messages container. This is simpler, but it means chat history only covers the last 30 days.
@@ -58,7 +60,7 @@ III.D.2.3 and III.E.4.g require deleting a user's data after they revoke access:
 
 - Add a "delete my data" action that removes the user's messages, or their stored display info under the first option in item 3.
 - Revoke the Google token when the user deletes their data. Signing out on its own can stay as it is.
-- A 30-day TTL from item 3 handles revocation from Google's security page, because the app has no other way to find out about it.
+- A 30-day TTL from item 3 handles revocation from Google's security page, because the app has no other way to find out about it. *That TTL is now in place. The "delete my data" action is still missing. Reactions are anonymous, so it only needs to cover messages and reaction quota counters.*
 
 ### 5. Terms, privacy policy and revocation link
 

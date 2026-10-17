@@ -16,7 +16,7 @@ infra/    OpenTofu for the Azure resources, deployed into the alz-parkrrr "balco
 - **Google sign-in** (OAuth code + PKCE, with the `youtube.readonly` scope for the viewer's channel name and avatar) is parked until Google verifies the app for that scope. The code is still in `server/src/auth.ts`. Setting `GOOGLE_SIGN_IN=on`, along with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, adds an "Or sign in with Google" link to the sign-in screen again.
 - **Premium / ads**: the IFrame player can't be handed an OAuth token. It plays as whichever Google account the browser is signed in to on youtube.com, so Premium applies when the viewer is signed in there and the browser allows YouTube's cookies in embeds. Signing in to Balcony doesn't change playback.
 - **Positions**: each client reports `{t, playing, rate}` when it changes and every 5 seconds as a heartbeat. The server relays reports to the room, and clients estimate where everyone is between reports. Nothing about positions is stored.
-- **History**: the last 100 messages per video, in Cosmos DB (container partitioned on `/videoId`). With no `COSMOS_ENDPOINT` set, history is kept in memory.
+- **History**: the last 100 messages per video, in Cosmos DB (container partitioned on `/videoId`). With no `COSMOS_ENDPOINT` set, history is kept in memory. Messages are deleted 30 days after they're sent: by the container's `default_ttl` in Cosmos, and by the store itself in memory.
 - **Reactions**: emoji pinned to a moment in the video, replayed for everyone who reaches it. Stored in a second Cosmos container, `reactions`, or in memory without Cosmos.
 - **Search bar**: the top bar is the same on every page. Paste a YouTube link or ID and press the arrow to open its room, or roll the 🎲 for a random one.
 - **Most reacted**: the landing page is just this list: the 5 videos with the most reactions thrown in the last 7 days, each with its top emoji (`/api/most-reacted`, `server/src/mostReacted.ts`). Titles and channel names come from YouTube's public oEmbed endpoint and are cached in memory for 6 hours. Thumbnails load straight from `i.ytimg.com`. The list is refreshed at most every 5 minutes, because each refresh is a cross-partition Cosmos query.
@@ -57,6 +57,20 @@ Logs go to the platform Log Analytics workspace. The Google client secret and th
 ### Cost
 
 Roughly $13–18/month at low traffic: about $7.30 for the Cosmos private endpoint, $5 for ACR Basic, $0.50 for the DNS zone, and pennies for serverless Cosmos. Container Apps is mostly covered by the monthly free grant while the app scales to zero. This counts against the subscription's $50 budget.
+
+### Retention
+
+| Data | Kept for | How |
+| --- | --- | --- |
+| Chat messages | 30 days | Cosmos `default_ttl` on `messages` |
+| Reactions | Indefinitely | Fully anonymous: no user ID, name or avatar |
+| Reaction quota counters | 30 days after the viewer's last reaction on that video | Cosmos `default_ttl` on `reaction-quotas`; keyed by a hash of the user ID |
+| Cosmos backups | 8 hours | Periodic backup (every 4 hours, 8-hour retention), so deleted data is gone from backups within a day |
+| Container images | Newest 5 | A CI step after each successful deploy deletes older tags |
+| Inactive app revisions | Newest 5 | `max_inactive_revisions` on the container app |
+| App logs | 30 days | The landing zone's Log Analytics workspace |
+| Sessions | 7 days | Signed cookie; nothing stored server-side |
+| Video titles (most reacted) | 6 hours | In process memory only |
 
 ### Limits
 

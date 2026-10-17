@@ -31,17 +31,18 @@ So reactions are part of the page **background**. Emoji fall from the top of the
 interface Reaction {
   id: string;
   videoId: string;
-  userId: string;
   emoji: string;
   videoTime: number; // seconds; required
   createdAt: number;
 }
 ```
 
-- **Anonymous.** Reactions don't store names or avatars, which keeps them clear of the 30-day limit on stored YouTube data (compliance item 3). Viewers only ever receive `{ id, emoji, videoTime }`.
-- **Storage.** A second Cosmos container, `reactions`, partitioned on `/videoId` like `messages` (`azurerm_cosmosdb_sql_container.reactions` in `infra/main.tf`). It can be renamed with `COSMOS_REACTIONS_CONTAINER`. Without Cosmos, reactions are kept in memory.
-- **`ReactionStore`** in `server/src/store.ts` has memory and Cosmos versions, with `add`, `forVideo(videoId)` and `countByUser(videoId, userId)`.
-- **Deletion.** Any "delete my data" flow (compliance item 4) must delete reactions too.
+- **Fully anonymous.** Nothing in a reaction says who threw it: no name, no avatar, no user ID. That means reactions can be kept for good and keep replaying, with nothing personal to expire or delete. Viewers only ever receive `{ id, emoji, videoTime }`.
+- **Quota counters.** The 50-per-video limit is tracked separately: one counter per viewer per video, `{ id: sha256(userId), videoId, count }`. It's keyed by a hash so the raw user ID isn't stored. Counters live in their own container, `reaction-quotas`, with a 30-day `default_ttl`. Cosmos counts that from each counter's last write, so a counter disappears 30 days after the viewer's last reaction on that video, and their limit starts over. Counting uses Cosmos's atomic `incr` patch, so two tabs throwing at once can't lose a count.
+- **Storage.** Both containers are partitioned on `/videoId` like `messages` (`azurerm_cosmosdb_sql_container.reactions` and `.reaction_quotas` in `infra/main.tf`). They can be renamed with `COSMOS_REACTIONS_CONTAINER` and `COSMOS_QUOTAS_CONTAINER`. Without Cosmos, both are kept in memory and the memory store expires counters itself.
+- **`ReactionStore`** in `server/src/store.ts` has memory and Cosmos versions, with `add(reaction, thrownBy)`, `forVideo(videoId)` and `quotaUsed(videoId, userId)`.
+- **Older reactions.** Reactions saved before anonymization stored the thrower's `userId`. On startup, the Cosmos store strips that field from any that still have it (`scrubLegacyUserIds`, logged as "Anonymized N older reactions"). Their counts don't carry over into the new counters, so everyone's limit starts fresh once. The cleanup can be removed once it logs 0.
+- **Deletion.** There's nothing per-person in reactions to delete. A "delete my data" flow (compliance item 4) only needs to remove the viewer's quota counters.
 
 ## Server (`server/src/chat.ts`)
 
@@ -50,7 +51,7 @@ The `react` event (`{ emoji, videoTime }`) checks that:
 - `emoji` is exactly one grapheme (`Intl.Segmenter`), and is `\p{Extended_Pictographic}`, a flag (two regional indicators) or a keycap such as 1️⃣;
 - `videoTime` is a valid time;
 - this socket hasn't thrown in the last second;
-- the user has used fewer than 50 reactions on this video, counted from the store so the quota survives restarts and covers every tab.
+- the user has used fewer than 50 reactions on this video, read from their quota counter in the store so the limit survives restarts and covers every tab.
 
 On failure it acks `{ error }`. Otherwise it saves the reaction, sends `reaction` to the rest of the room, and acks `{ ok, reaction }`.
 
