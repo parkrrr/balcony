@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  infra:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.0
+          tofu_wrapper: false
+      - run: tofu fmt -check -recursive
+      - run: tofu init -backend=false -input=false
+      - run: tofu validate
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [test, infra]
+    runs-on: ubuntu-latest
+    # The landing zone trusts this environment's OIDC subject
+    # (repo:parkrrr@393737/balcony@1194175094:environment:azure).
+    environment: azure
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_CLI: "false"
+      ARM_USE_MSI: "false"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      TF_VAR_image_tag: ${{ github.sha }}
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      # Also a fast credential preflight: a bad federated credential otherwise
+      # surfaces as a 300s backend timeout in tofu init.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.0
+          tofu_wrapper: false
+
+      - name: tofu init
+        run: |
+          tofu init -input=false \
+            -backend-config="use_oidc=true" \
+            -backend-config="client_id=${ARM_CLIENT_ID}" \
+            -backend-config="tenant_id=${ARM_TENANT_ID}" \
+            -backend-config="subscription_id=${ARM_SUBSCRIPTION_ID}"
+
+      # The app's image lives in a registry this config creates, so the very
+      # first run creates the registry alone before there is anything to push to.
+      - name: Bootstrap registry
+        run: |
+          if ! tofu state list | grep -qx 'azurerm_container_registry.main'; then
+            tofu apply -input=false -no-color -auto-approve -target=azurerm_container_registry.main
+          fi
+
+      - name: Build and push image
+        run: |
+          registry=$(tofu output -raw registry_login_server)
+          az acr login --name "$(tofu output -raw registry_name)"
+          docker build -t "$registry/balcony:$TF_VAR_image_tag" ..
+          docker push "$registry/balcony:$TF_VAR_image_tag"
+
+      - name: tofu plan
+        run: tofu plan -input=false -no-color -out=tfplan
+
+      - name: tofu apply
+        run: tofu apply -input=false -no-color -auto-approve tfplan
+
+      - name: Step summary
+        run: |
+          {
+            echo "## Deployed"
+            echo ""
+            echo "$(tofu output -raw url)"
+          } >> "$GITHUB_STEP_SUMMARY"

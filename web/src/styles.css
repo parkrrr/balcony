@@ -1,0 +1,491 @@
+:root {
+  /* Theater balcony: dark velvet surfaces, gold accent. */
+  --bg: #15121b;
+  --surface: #1e1a26;
+  --surface-2: #2a2433;
+  --border: #3a3245;
+  --text: #f3eff7;
+  --muted: #a79fb3;
+  --accent: #e8b04a;
+  --on-accent: #1d1608;
+  --danger: #ff8a7a;
+  --self: #6fd3c4;
+  --chat-width: 360px;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--self);
+  outline-offset: 2px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.center {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 16px;
+}
+
+.card {
+  width: min(480px, 100%);
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.card h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.brand-large {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-large .logo {
+  width: 32px;
+  height: 32px;
+}
+
+.fine-print {
+  margin: 20px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.button-primary {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app > .center {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Top bar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.logo {
+  width: 24px;
+  height: 24px;
+}
+
+.me {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.me-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.link:hover {
+  color: var(--text);
+}
+
+.video-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.video-form.compact {
+  flex: 1;
+  max-width: 560px;
+}
+
+.video-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.video-form button,
+.chat-form button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.video-form button:hover,
+.chat-form button:not(:disabled):hover {
+  background: var(--border);
+}
+
+.form-error,
+.chat-error {
+  width: 100%;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* Watch page: video + timeline on the left, chat on the right */
+
+.watch {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--chat-width);
+}
+
+.stage {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.player {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 220px);
+  margin: 0 auto;
+  background: black;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.player-frame,
+.player-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.player-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  background: rgb(0 0 0 / 0.85);
+}
+
+/* Timeline */
+
+.timeline {
+  margin-top: 16px;
+}
+
+.timeline-track {
+  position: relative;
+  padding: 0 14px;
+}
+
+.timeline-markers {
+  position: relative;
+  margin-bottom: 6px;
+  transition: height 0.2s;
+}
+
+.marker {
+  position: absolute;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  background: var(--surface);
+  transition: left 0.25s linear, bottom 0.2s;
+}
+
+.marker::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 0;
+  height: 6px;
+  border-left: 2px solid var(--muted);
+  transform: translateX(-50%);
+}
+
+.marker:not(:disabled):hover {
+  border-color: var(--text);
+  z-index: 2;
+}
+
+.marker-self {
+  border-color: var(--self);
+  z-index: 1;
+}
+
+.marker-self::after {
+  border-color: var(--self);
+}
+
+.timeline-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+/* A 6px bar is a hard target; widen the clickable area without changing its look. */
+.timeline-bar::before {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
+.timeline-progress {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.timeline-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.viewers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.viewer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.viewer:hover {
+  background: var(--surface-2);
+}
+
+.viewer-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-time {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  color: white;
+  font-weight: 600;
+}
+
+/* Chat */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+
+.status {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.status-disconnected,
+.status-unauthorized {
+  color: var(--danger);
+}
+
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.chat-empty {
+  padding: 8px 16px;
+}
+
+.chat-message {
+  display: flex;
+  gap: 10px;
+  padding: 4px 16px;
+  overflow-wrap: anywhere;
+}
+
+.chat-message:hover {
+  background: var(--surface-2);
+}
+
+.chat-name {
+  margin-right: 6px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.chat-time {
+  margin-right: 6px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--self);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-time:hover {
+  text-decoration: underline;
+}
+
+.chat-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .watch {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(320px, 1fr);
+    overflow-y: auto;
+  }
+
+  .stage {
+    overflow: visible;
+  }
+
+  .chat {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .topbar .me-name {
+    display: none;
+  }
+}
