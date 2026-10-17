@@ -33,7 +33,7 @@ const signedIn = async () => ({
 let n = 0;
 async function throwAt(store: MemoryReactionStore, videoId: string, times: number) {
   for (let i = 0; i < times; i++) {
-    await store.add({ id: `r${n++}`, videoId, userId: "u", emoji: "🍅", videoTime: 1, createdAt: Date.now() });
+    await store.add({ id: `r${n++}`, videoId, emoji: "🍅", videoTime: 1, createdAt: Date.now() }, "u");
   }
 }
 

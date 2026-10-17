@@ -28,7 +28,7 @@ let url: string;
 let n = 0;
 async function throwAt(videoId: string, emoji: string, times: number, createdAt = Date.now()) {
   for (let i = 0; i < times; i++) {
-    await reactions.add({ id: `r${n++}`, videoId, userId: "u", emoji, videoTime: 1, createdAt });
+    await reactions.add({ id: `r${n++}`, videoId, emoji, videoTime: 1, createdAt }, "u");
   }
 }
 

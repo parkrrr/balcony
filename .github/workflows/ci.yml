@@ -109,6 +109,22 @@ jobs:
       - name: tofu apply
         run: tofu apply -input=false -no-color -auto-approve tfplan
 
+      # Every deploy pushes an image tagged with its commit, so without this the registry only
+      # grows. Runs after a successful apply, so the image just deployed is the newest and is
+      # always kept; the four before it stay around for rollback. Tags are commit SHAs and are
+      # never reused, so deleting by tag leaves no untagged manifests behind. A failed purge
+      # only warns: the deploy itself has already succeeded.
+      - name: Purge old images
+        continue-on-error: true
+        run: |
+          registry=$(tofu output -raw registry_name)
+          az acr repository show-tags --name "$registry" --repository balcony --orderby time_desc --output tsv \
+            | tail -n +6 \
+            | while read -r tag; do
+                echo "Deleting balcony:$tag"
+                az acr repository delete --name "$registry" --image "balcony:$tag" --yes --output none
+              done
+
       - name: Step summary
         run: |
           {

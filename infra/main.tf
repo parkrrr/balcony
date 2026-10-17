@@ -124,15 +124,33 @@ resource "azurerm_cosmosdb_sql_container" "messages" {
   account_name        = azurerm_cosmosdb_account.main.name
   database_name       = azurerm_cosmosdb_sql_database.main.name
   partition_key_paths = ["/videoId"]
+
+  # Messages expire 30 days after they're written (Cosmos counts from _ts, and messages are
+  # never edited). Expired messages drop out of queries at once and are deleted in the
+  # background. Keep in sync with MESSAGE_RETENTION_MS in server/src/store.ts.
+  default_ttl = 30 * 24 * 60 * 60
 }
 
 # Timed reactions, partitioned the same way: a room loads all of its reactions in one query.
+# Reactions are anonymous and kept for good, so replays keep working.
 resource "azurerm_cosmosdb_sql_container" "reactions" {
   name                = "reactions"
   resource_group_name = data.azurerm_resource_group.workload.name
   account_name        = azurerm_cosmosdb_account.main.name
   database_name       = azurerm_cosmosdb_sql_database.main.name
   partition_key_paths = ["/videoId"]
+}
+
+# Per-viewer reaction counters for the 50-per-video limit, keyed by a hash of the user ID.
+# Each expires 30 days after the viewer's last reaction on that video (Cosmos counts from the
+# last write). Keep in sync with QUOTA_RETENTION_MS in server/src/store.ts.
+resource "azurerm_cosmosdb_sql_container" "reaction_quotas" {
+  name                = "reaction-quotas"
+  resource_group_name = data.azurerm_resource_group.workload.name
+  account_name        = azurerm_cosmosdb_account.main.name
+  database_name       = azurerm_cosmosdb_sql_database.main.name
+  partition_key_paths = ["/videoId"]
+  default_ttl         = 30 * 24 * 60 * 60
 }
 
 resource "azurerm_cosmosdb_sql_role_assignment" "app" {
@@ -197,6 +215,8 @@ resource "azurerm_container_app" "main" {
   resource_group_name          = data.azurerm_resource_group.workload.name
   revision_mode                = "Single"
   workload_profile_name        = "Consumption"
+  # Matches the images CI keeps in the registry; an older revision's image is gone anyway.
+  max_inactive_revisions = 5
 
   identity {
     type         = "UserAssigned"

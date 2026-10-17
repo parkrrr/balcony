@@ -11,7 +11,13 @@ export interface Config {
   google: { clientId: string; clientSecret: string } | null;
   sessionSecret: string;
   secureCookies: boolean;
-  cosmos: { endpoint: string; database: string; container: string; reactionsContainer: string } | null;
+  cosmos: {
+    endpoint: string;
+    database: string;
+    container: string;
+    reactionsContainer: string;
+    quotasContainer: string;
+  } | null;
   webDist: string;
 }
 
@@ -43,6 +49,7 @@ export function loadConfig(): Config {
           database: env.COSMOS_DATABASE ?? "balcony",
           container: env.COSMOS_CONTAINER ?? "messages",
           reactionsContainer: env.COSMOS_REACTIONS_CONTAINER ?? "reactions",
+          quotasContainer: env.COSMOS_QUOTAS_CONTAINER ?? "reaction-quotas",
         }
       : null,
     webDist: env.WEB_DIST ?? path.resolve(import.meta.dirname, "../../web/dist"),

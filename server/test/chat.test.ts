@@ -7,7 +7,7 @@ import { cleanName, safeReturnTo } from "../src/auth.js";
 import { REACTION_QUOTA, isEmoji, type PositionEvent, type PublicReaction } from "../src/chat.js";
 import type { Config } from "../src/config.js";
 import { SESSION_COOKIE, readSession, signSession, type User } from "../src/session.js";
-import { MemoryReactionStore, MemoryStore, type ChatMessage } from "../src/store.js";
+import { MESSAGE_RETENTION_MS, MemoryReactionStore, MemoryStore, QUOTA_RETENTION_MS, type ChatMessage } from "../src/store.js";
 
 const config: Config = {
   port: 0,
@@ -169,13 +169,39 @@ describe("reactions", () => {
 
     // Fill the rest of the quota directly rather than waiting out the rate limit 49 times.
     for (let i = 1; i < REACTION_QUOTA; i++) {
-      await reactionStore.add({ id: `seed${i}`, videoId: room, userId: "alice", emoji: "🥚", videoTime: i, createdAt: 0 });
+      await reactionStore.add({ id: `seed${i}`, videoId: room, emoji: "🥚", videoTime: i, createdAt: 0 }, "alice");
     }
     const fresh = await join(alice, room);
     await next(fresh, "reactions");
     assert.deepEqual(await fresh.emitWithAck("react", { emoji: "🍅", videoTime: 3 }), {
       error: "You've reached the reaction limit for this video.",
     });
+  });
+
+  test("stores nothing that names the thrower", async () => {
+    const room = "eeeeeeeeeee";
+    const s = await join(alice, room);
+    await next(s, "reactions");
+    await s.emitWithAck("react", { emoji: "🍅", videoTime: 5 });
+    const [stored] = await reactionStore.forVideo(room);
+    assert.deepEqual(Object.keys(stored).sort(), ["createdAt", "emoji", "id", "videoId", "videoTime"]);
+    assert.ok(!JSON.stringify(stored).includes(alice.id));
+    assert.equal(await reactionStore.quotaUsed(room, alice.id), 1);
+  });
+
+  test("quota counters expire 30 days after the viewer's last reaction, but reactions stay", async () => {
+    let now = Date.UTC(2026, 0, 1);
+    const store = new MemoryReactionStore(() => now);
+    const throwOne = (i: number) => store.add({ id: `q${i}`, videoId: VIDEO, emoji: "🍅", videoTime: i, createdAt: now }, "bob");
+    await throwOne(1);
+    now += QUOTA_RETENTION_MS - 1000;
+    await throwOne(2);
+    // Throwing again restarts the 30 days.
+    now += QUOTA_RETENTION_MS - 1000;
+    assert.equal(await store.quotaUsed(VIDEO, "bob"), 2);
+    now += 2000;
+    assert.equal(await store.quotaUsed(VIDEO, "bob"), 0);
+    assert.equal((await store.forVideo(VIDEO)).length, 2);
   });
 });
 
@@ -217,5 +243,32 @@ describe("guest sign-in", () => {
     assert.deepEqual(await (await fetch(`${url}/api/me`)).json(), { error: "unauthorized", google: false });
     const login = await fetch(`${url}/auth/login`, { redirect: "manual" });
     assert.notEqual(login.status, 302);
+  });
+});
+
+describe("message retention", () => {
+  test("drops messages once they're 30 days old", async () => {
+    let now = Date.UTC(2026, 0, 1);
+    const store = new MemoryStore(500, () => now);
+    const msg = (id: string, createdAt: number): ChatMessage => ({
+      id,
+      videoId: VIDEO,
+      userId: "u",
+      name: "U",
+      avatar: null,
+      text: id,
+      videoTime: null,
+      createdAt,
+    });
+    await store.add(msg("old", now));
+    now += MESSAGE_RETENTION_MS - 1000;
+    await store.add(msg("new", now));
+    assert.deepEqual((await store.recent(VIDEO, 100)).map((m) => m.id), ["old", "new"]);
+
+    now += 2000;
+    assert.deepEqual((await store.recent(VIDEO, 100)).map((m) => m.id), ["new"]);
+    now += MESSAGE_RETENTION_MS;
+    assert.deepEqual(await store.recent(VIDEO, 100), []);
+    assert.deepEqual(await store.recent("never-used0", 100), []);
   });
 });

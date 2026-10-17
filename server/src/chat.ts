@@ -159,20 +159,13 @@ export function attachChat(io: Server, config: Config, store: MessageStore, reac
       if (now - lastReactionAt < REACTION_MIN_INTERVAL_MS) return reply({ error: "One reaction a second, please." });
       lastReactionAt = now;
 
-      const reaction: Reaction = {
-        id: randomUUID(),
-        videoId,
-        userId: user.id,
-        emoji: p.emoji,
-        videoTime: p.videoTime,
-        createdAt: now,
-      };
+      const reaction: Reaction = { id: randomUUID(), videoId, emoji: p.emoji, videoTime: p.videoTime, createdAt: now };
       try {
         // Counted from the store rather than memory, so the quota survives restarts and covers every tab.
-        if ((await reactions.countByUser(videoId, user.id)) >= REACTION_QUOTA) {
+        if ((await reactions.quotaUsed(videoId, user.id)) >= REACTION_QUOTA) {
           return reply({ error: "You've reached the reaction limit for this video." });
         }
-        await reactions.add(reaction);
+        await reactions.add(reaction, user.id);
       } catch (err) {
         console.error("Saving reaction failed", err);
         return reply({ error: "Couldn't send that reaction. Try again." });
