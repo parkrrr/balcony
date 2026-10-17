@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Chat } from "./components/Chat";
+import { MostReacted } from "./components/MostReacted";
 import { Player, type PlayerTick } from "./components/Player";
 import { Rain, type RainHandle } from "./components/Rain";
 import { ReactionBar } from "./components/ReactionBar";
@@ -144,12 +145,13 @@ function TopBar({ me }: { me: User }) {
 
 function Home() {
   return (
-    <div className="center">
+    <div className="home">
       <div className="card">
         <h1>Pick a video</h1>
         <p className="muted">Paste a YouTube link or video ID to open its chat room.</p>
         <VideoForm />
       </div>
+      <MostReacted />
     </div>
   );
 }

@@ -102,3 +102,4 @@ This rule also limits features. Nothing the app draws can go on top of the playe
 - Never asks for or stores YouTube credentials (II.4).
 - Uses the access token once, at sign-in, and discards it. Sessions last 7 days, which is inside the 30-day re-authorization window in III.E.4.b.
 - Doesn't store playback positions.
+- The landing page's "most reacted" list shows titles, channel names and thumbnails for the videos people react to most. Titles and channel names come from YouTube's oEmbed endpoint and live in process memory for at most 6 hours, inside the 30-day limit in III.E.4.c. They're never written to Cosmos. Each entry links to that video's room, where it plays in the official player.

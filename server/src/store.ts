@@ -84,6 +84,14 @@ export interface ReactionStore {
   /** Every reaction on a video, in no particular order. */
   forVideo(videoId: string): Promise<Reaction[]>;
   countByUser(videoId: string, userId: string): Promise<number>;
+  /** How many of each emoji every video got from reactions thrown at or after `since` (ms). */
+  countsSince(since: number): Promise<EmojiCount[]>;
+}
+
+export interface EmojiCount {
+  videoId: string;
+  emoji: string;
+  count: number;
 }
 
 export class MemoryReactionStore implements ReactionStore {
@@ -102,9 +110,23 @@ export class MemoryReactionStore implements ReactionStore {
   async countByUser(videoId: string, userId: string): Promise<number> {
     return (this.byVideo.get(videoId) ?? []).filter((r) => r.userId === userId).length;
   }
+
+  async countsSince(since: number): Promise<EmojiCount[]> {
+    const counts = new Map<string, EmojiCount>();
+    for (const list of this.byVideo.values()) {
+      for (const r of list) {
+        if (r.createdAt < since) continue;
+        const key = `${r.videoId} ${r.emoji}`;
+        const entry = counts.get(key) ?? { videoId: r.videoId, emoji: r.emoji, count: 0 };
+        entry.count++;
+        counts.set(key, entry);
+      }
+    }
+    return [...counts.values()];
+  }
 }
 
-/** Partitioned on /videoId like messages, so both queries stay in one partition. */
+/** Partitioned on /videoId like messages, so a room's queries stay in one partition. */
 export class CosmosReactionStore implements ReactionStore {
   private readonly container: Container;
 
@@ -144,5 +166,17 @@ export class CosmosReactionStore implements ReactionStore {
       )
       .fetchAll();
     return resources[0] ?? 0;
+  }
+
+  /** The one cross-partition query; GROUP BY keeps the result to one row per video and emoji. */
+  async countsSince(since: number): Promise<EmojiCount[]> {
+    const { resources } = await this.container.items
+      .query<EmojiCount>({
+        query:
+          "SELECT c.videoId, c.emoji, COUNT(1) AS count FROM c WHERE c.createdAt >= @since GROUP BY c.videoId, c.emoji",
+        parameters: [{ name: "@since", value: since }],
+      })
+      .fetchAll();
+    return resources;
   }
 }

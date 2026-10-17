@@ -6,12 +6,15 @@ import { Server } from "socket.io";
 import { authRouter } from "./auth.js";
 import { attachChat, sameOrigin } from "./chat.js";
 import type { Config } from "./config.js";
+import { mostReactedRouter, type TitleLookup } from "./mostReacted.js";
 import type { MessageStore, ReactionStore } from "./store.js";
 
 export function createAppServer(
   config: Config,
   store: MessageStore,
   reactions: ReactionStore,
+  /** Tests swap out the YouTube title lookup. */
+  titleLookup?: TitleLookup,
 ): { server: HttpServer; io: Server } {
   const app = express();
   // Container Apps terminates TLS at its ingress and forwards X-Forwarded-Proto/Host.
@@ -22,6 +25,7 @@ export function createAppServer(
     res.type("text").send("ok");
   });
   app.use(authRouter(config));
+  app.use(mostReactedRouter(config, reactions, titleLookup));
 
   if (existsSync(config.webDist)) {
     // Vite content-hashes everything under /assets, so those can be cached forever.

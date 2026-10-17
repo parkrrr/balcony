@@ -170,6 +170,95 @@ button.button-primary:disabled {
   min-height: 0;
 }
 
+/* Landing page: pick a video, then the week's most reacted */
+
+.app > .home {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 48px 16px;
+}
+
+.most-reacted {
+  width: min(720px, 100%);
+}
+
+.most-reacted h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.most-reacted ol {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.most-reacted-item {
+  display: flex;
+  gap: 14px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-decoration: none;
+}
+
+.most-reacted-item:hover {
+  background: var(--surface-2);
+}
+
+.most-reacted-item img {
+  flex: none;
+  width: 160px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  object-fit: cover;
+  background: black;
+}
+
+.most-reacted-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.most-reacted-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.most-reacted-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: auto;
+}
+
+.most-reacted-emoji {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 520px) {
+  .most-reacted-item img {
+    width: 112px;
+  }
+}
+
 /* Top bar */
 
 .topbar {
