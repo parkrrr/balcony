@@ -18,7 +18,9 @@ infra/    OpenTofu for the Azure resources, deployed into the alz-parkrrr "balco
 - **Positions**: each client reports `{t, playing, rate}` when it changes and every 5 seconds as a heartbeat. The server relays reports to the room, and clients estimate where everyone is between reports. Nothing about positions is stored.
 - **History**: the last 100 messages per video, in Cosmos DB (container partitioned on `/videoId`). With no `COSMOS_ENDPOINT` set, history is kept in memory.
 - **Reactions**: emoji pinned to a moment in the video, replayed for everyone who reaches it. Stored in a second Cosmos container, `reactions`, or in memory without Cosmos.
-- **Most reacted**: the landing page lists the 5 videos with the most reactions thrown in the last 7 days, each with its top emoji (`/api/most-reacted`, `server/src/mostReacted.ts`). Titles and channel names come from YouTube's public oEmbed endpoint and are cached in memory for 6 hours. Thumbnails load straight from `i.ytimg.com`. The list is refreshed at most every 5 minutes, because each refresh is a cross-partition Cosmos query.
+- **Search bar**: the top bar is the same on every page. Paste a YouTube link or ID and press the arrow to open its room, or roll the 🎲 for a random one.
+- **Most reacted**: the landing page is just this list: the 5 videos with the most reactions thrown in the last 7 days, each with its top emoji (`/api/most-reacted`, `server/src/mostReacted.ts`). Titles and channel names come from YouTube's public oEmbed endpoint and are cached in memory for 6 hours. Thumbnails load straight from `i.ytimg.com`. The list is refreshed at most every 5 minutes, because each refresh is a cross-partition Cosmos query.
+- **Random video**: the 🎲 in the search bar opens a video picked uniformly from every video that has ever had a reaction (`/api/random-video`, `server/src/randomVideo.ts`). On a video page it never picks the video you're watching (`?exclude=<id>`). Reaction counts don't matter: a video with one reaction is as likely as one with thousands. The list of reacted videos is cached for 5 minutes, but each click makes a fresh pick.
 
 ## Local development
 

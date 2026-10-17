@@ -170,7 +170,7 @@ button.button-primary:disabled {
   min-height: 0;
 }
 
-/* Landing page: pick a video, then the week's most reacted */
+/* Landing page: the week's most reacted (searching lives in the top bar) */
 
 .app > .home {
   flex: 1;
@@ -179,8 +179,19 @@ button.button-primary:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
-  padding: 48px 16px;
+  padding: 32px 16px;
+}
+
+.most-reacted-empty {
+  padding: 32px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.most-reacted-empty p {
+  margin: 0;
 }
 
 .most-reacted {
@@ -308,13 +319,11 @@ button.button-primary:disabled {
   color: var(--text);
 }
 
+/* The search box in the top bar: link field, open arrow, random die. */
 .video-form {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-}
-
-.video-form.compact {
   flex: 1;
   max-width: 560px;
 }
@@ -339,6 +348,44 @@ button.button-primary:disabled {
 .video-form button:hover,
 .chat-form button:not(:disabled):hover {
   background: var(--border);
+}
+
+.video-form .video-form-go,
+.video-form .random-video button {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.random-video {
+  position: relative;
+  display: flex;
+}
+
+.random-video button {
+  font-size: 16px;
+}
+
+/* Short-lived messages under the search box: a bad link, or nothing to roll. */
+.search-error {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.random-video .search-error {
+  left: auto;
+  right: 0;
 }
 
 .form-error,
