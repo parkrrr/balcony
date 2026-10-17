@@ -3,5 +3,6 @@ location        = "northcentralus"
 prefix          = "alz"
 name            = "balcony"
 
-# TODO: OAuth client ID from the Google Cloud console (not a secret).
-google_client_id = "870330204877-6kjmf38ea03lmovbll647a36ekucdcbp.apps.googleusercontent.com"
+# OAuth client ID from the Google Cloud console (not a secret). Its secret is the
+# GOOGLE_CLIENT_SECRET in the "azure" GitHub environment; the two must be from the same client.
+google_client_id = "1060444909321-liamf2elje73g4fbbs0pibugvgpd920m.apps.googleusercontent.com"
