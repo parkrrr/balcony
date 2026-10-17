@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { after, before, describe, test } from "node:test";
 import { io as connect, type Socket } from "socket.io-client";
 import { createAppServer } from "../src/app.js";
-import { safeReturnTo } from "../src/auth.js";
+import { cleanName, safeReturnTo } from "../src/auth.js";
 import { REACTION_QUOTA, isEmoji, type PositionEvent, type PublicReaction } from "../src/chat.js";
 import type { Config } from "../src/config.js";
 import { SESSION_COOKIE, readSession, signSession, type User } from "../src/session.js";
@@ -12,8 +12,7 @@ import { MemoryReactionStore, MemoryStore, type ChatMessage } from "../src/store
 const config: Config = {
   port: 0,
   baseUrl: null,
-  googleClientId: "test",
-  googleClientSecret: "test",
+  google: null,
   sessionSecret: "x".repeat(32),
   secureCookies: false,
   cosmos: null,
@@ -177,5 +176,46 @@ describe("reactions", () => {
     assert.deepEqual(await fresh.emitWithAck("react", { emoji: "🍅", videoTime: 3 }), {
       error: "You've reached the reaction limit for this video.",
     });
+  });
+});
+
+describe("guest sign-in", () => {
+  const guest = (body: unknown, origin = url) =>
+    fetch(`${url}/auth/guest`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  test("tidies names and rejects unusable ones", () => {
+    assert.equal(cleanName("  Velvet   Owl "), "Velvet Owl");
+    assert.equal(cleanName("Bob‮evil"), "Bobevil");
+    assert.equal(cleanName("Tab\tand\nnewline"), "Tab and newline");
+    assert.equal(cleanName("👨‍👩‍👧 fan"), "👨‍👩‍👧 fan");
+    for (const bad of ["", "   ", "\u0007", "x".repeat(33), 42, null]) assert.equal(cleanName(bad), null, String(bad));
+  });
+
+  test("signs in with a chosen name and a fresh guest identity", async () => {
+    const res = await guest({ name: " Velvet Owl " });
+    assert.equal(res.status, 200);
+    const user = (await res.json()) as User;
+    assert.equal(user.name, "Velvet Owl");
+    assert.match(user.id, /^guest:[0-9a-f-]{36}$/);
+
+    const cookie = res.headers.get("set-cookie")!.split(";")[0];
+    const me = await fetch(`${url}/api/me`, { headers: { cookie } });
+    assert.deepEqual(await me.json(), user);
+
+    // Same name again is a different person.
+    const again = (await (await guest({ name: "Velvet Owl" })).json()) as User;
+    assert.notEqual(again.id, user.id);
+  });
+
+  test("rejects bad names and cross-site requests", async () => {
+    assert.equal((await guest({ name: "   " })).status, 400);
+    assert.equal((await guest({})).status, 400);
+    assert.equal((await guest({ name: "Velvet Owl" }, "https://evil.example")).status, 403);
+  });
+
+  test("keeps Google sign-in off unless configured", async () => {
+    assert.deepEqual(await (await fetch(`${url}/api/me`)).json(), { error: "unauthorized", google: false });
+    const login = await fetch(`${url}/auth/login`, { redirect: "manual" });
+    assert.notEqual(login.status, 302);
   });
 });

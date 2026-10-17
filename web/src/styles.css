@@ -105,6 +105,60 @@ a {
   text-decoration: none;
 }
 
+button.button-primary {
+  border: 0;
+}
+
+button.button-primary:disabled {
+  opacity: 0.6;
+}
+
+.name-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.name-form label {
+  font-weight: 500;
+}
+
+.name-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.name-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.name-reroll {
+  flex: none;
+  width: 42px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 18px;
+}
+
+.name-reroll:hover {
+  background: var(--border);
+}
+
+.google-sign-in {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
 .app {
   display: flex;
   flex-direction: column;

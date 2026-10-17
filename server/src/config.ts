@@ -4,8 +4,11 @@ export interface Config {
   port: number;
   /** Public origin, e.g. https://balcony.chat. Null derives it from each request. */
   baseUrl: string | null;
-  googleClientId: string;
-  googleClientSecret: string;
+  /**
+   * Google sign-in, off unless GOOGLE_SIGN_IN=on. It's parked while the youtube.readonly
+   * scope goes through Google's verification; until then everyone signs in as a guest.
+   */
+  google: { clientId: string; clientSecret: string } | null;
   sessionSecret: string;
   secureCookies: boolean;
   cosmos: { endpoint: string; database: string; container: string; reactionsContainer: string } | null;
@@ -28,8 +31,10 @@ export function loadConfig(): Config {
   return {
     port: Number(env.PORT ?? 8080),
     baseUrl,
-    googleClientId: required("GOOGLE_CLIENT_ID"),
-    googleClientSecret: required("GOOGLE_CLIENT_SECRET"),
+    google:
+      env.GOOGLE_SIGN_IN === "on"
+        ? { clientId: required("GOOGLE_CLIENT_ID"), clientSecret: required("GOOGLE_CLIENT_SECRET") }
+        : null,
     sessionSecret,
     secureCookies: baseUrl ? baseUrl.startsWith("https://") : env.NODE_ENV === "production",
     cosmos: env.COSMOS_ENDPOINT

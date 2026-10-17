@@ -4,6 +4,7 @@ import { Player, type PlayerTick } from "./components/Player";
 import { Rain, type RainHandle } from "./components/Rain";
 import { ReactionBar } from "./components/ReactionBar";
 import { Timeline } from "./components/Timeline";
+import { randomName } from "./names";
 import { between } from "./reactions";
 import type { Reaction, User } from "./types";
 import { useRoom } from "./useRoom";
@@ -13,18 +14,24 @@ const here = () => window.location.pathname + window.location.search;
 
 export function App() {
   const [me, setMe] = useState<User | null | undefined>(undefined);
+  const [googleSignIn, setGoogleSignIn] = useState(false);
 
   useEffect(() => {
     fetch("/api/me", { credentials: "same-origin" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(setMe, () => setMe(null));
+      .then(async (res) => {
+        if (res.ok) return setMe(await res.json());
+        const body: { google?: boolean } = await res.json().catch(() => ({}));
+        setGoogleSignIn(body.google === true);
+        setMe(null);
+      })
+      .catch(() => setMe(null));
   }, []);
 
   // Mirrors YouTube's own URL shape, so swapping the domain on a watch link just works.
   const videoId = window.location.pathname === "/watch" ? new URLSearchParams(window.location.search).get("v") : null;
 
   if (me === undefined) return <div className="center muted">Loading…</div>;
-  if (me === null) return <SignIn />;
+  if (me === null) return <SignIn google={googleSignIn} onSignedIn={setMe} />;
 
   return (
     <div className="app">
@@ -34,7 +41,32 @@ export function App() {
   );
 }
 
-function SignIn() {
+function SignIn({ google, onSignedIn }: { google: boolean; onSignedIn: (me: User) => void }) {
+  const [name, setName] = useState("");
+  const [suggestion, setSuggestion] = useState(randomName);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Leaving the box empty takes the suggested name.
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await fetch("/auth/guest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name.trim() || suggestion }),
+      });
+      const body = await res.json();
+      if (res.ok) return onSignedIn(body);
+      setError(body.error ?? "Couldn't sign in. Try again.");
+    } catch {
+      setError("Couldn't sign in. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="center">
       <div className="card">
@@ -42,12 +74,47 @@ function SignIn() {
           <Logo /> Balcony
         </h1>
         <p>The best seats for watching YouTube together. Chat alongside any video and see where everyone else is.</p>
-        <a className="button-primary" href={`/auth/login?returnTo=${encodeURIComponent(here())}`}>
-          Sign in with Google
-        </a>
+        <form className="name-form" onSubmit={submit}>
+          <label htmlFor="display-name">What should everyone call you?</label>
+          <div className="name-row">
+            <input
+              id="display-name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setError(null);
+              }}
+              placeholder={suggestion}
+              maxLength={32}
+              autoComplete="nickname"
+              autoFocus
+            />
+            <button
+              type="button"
+              className="name-reroll"
+              onClick={() => {
+                setSuggestion(randomName());
+                setName("");
+              }}
+              title="Suggest another name"
+              aria-label="Suggest another name"
+            >
+              🎲
+            </button>
+          </div>
+          {error && <div className="form-error">{error}</div>}
+          <button type="submit" className="button-primary" disabled={busy}>
+            Join as {name.trim() || suggestion}
+          </button>
+        </form>
+        {google && (
+          <a className="link google-sign-in" href={`/auth/login?returnTo=${encodeURIComponent(here())}`}>
+            Or sign in with Google
+          </a>
+        )}
         <p className="fine-print">
-          We only read your channel name and picture. Ads and YouTube Premium follow whichever Google account is
-          signed in to youtube.com in this browser.
+          No account needed. Your name is shown to everyone watching with you. Ads and YouTube Premium follow
+          whichever Google account is signed in to youtube.com in this browser.
         </p>
       </div>
     </div>

@@ -8,11 +8,12 @@ Rooms use YouTube's own URL shape, so `https://<site>/watch?v=dQw4w9WgXcQ` works
 
 ```
 web/      React + Vite. Player (IFrame API), Timeline, Chat; one Socket.IO connection per video.
-server/   Node + Express + Socket.IO. Google sign-in, chat relay/history, position relay. Serves web/dist in production.
+server/   Node + Express + Socket.IO. Sign-in, chat relay/history, position relay. Serves web/dist in production.
 infra/    OpenTofu for the Azure resources, deployed into the alz-parkrrr "balcony" landing zone.
 ```
 
-- **Sign-in** is Google OAuth (authorization code + PKCE) with the `youtube.readonly` scope, which is only used to read the viewer's channel name and avatar. The session is a signed, httpOnly cookie, and the server keeps no session state.
+- **Sign-in** is, for now, on the honor system. Viewers type a display name, or take a random one like "Velvet Owl". Each sign-in is a fresh guest identity (`guest:<uuid>`), and names don't have to be unique. The session is a signed, httpOnly cookie, and the server keeps no session state.
+- **Google sign-in** (OAuth code + PKCE, with the `youtube.readonly` scope for the viewer's channel name and avatar) is parked until Google verifies the app for that scope. The code is still in `server/src/auth.ts`. Setting `GOOGLE_SIGN_IN=on`, along with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, adds an "Or sign in with Google" link to the sign-in screen again.
 - **Premium / ads**: the IFrame player can't be handed an OAuth token. It plays as whichever Google account the browser is signed in to on youtube.com, so Premium applies when the viewer is signed in there and the browser allows YouTube's cookies in embeds. Signing in to Balcony doesn't change playback.
 - **Positions**: each client reports `{t, playing, rate}` when it changes and every 5 seconds as a heartbeat. The server relays reports to the room, and clients estimate where everyone is between reports. Nothing about positions is stored.
 - **History**: the last 100 messages per video, in Cosmos DB (container partitioned on `/videoId`). With no `COSMOS_ENDPOINT` set, history is kept in memory.
@@ -20,11 +21,12 @@ infra/    OpenTofu for the Azure resources, deployed into the alz-parkrrr "balco
 
 ## Local development
 
-1. Create an OAuth client in the Google Cloud console (*Web application*), add `http://localhost:5173/auth/callback` as a redirect URI, and enable the **YouTube Data API v3**.
-2. `cp server/.env.example server/.env` and fill it in.
-3. `npm install && npm run dev`, then open http://localhost:5173.
+1. `cp server/.env.example server/.env` and set `SESSION_SECRET`.
+2. `npm install && npm run dev`, then open http://localhost:5173.
 
-Run `npm test` for the server tests (session handling plus Socket.IO rooms, chat and positions against a real server) and `npm run typecheck` to typecheck both packages.
+To try Google sign-in locally, create an OAuth client in the Google Cloud console (*Web application*). Add `http://localhost:5173/auth/callback` as a redirect URI, enable the **YouTube Data API v3**, and set the `GOOGLE_*` variables in `server/.env`.
+
+Run `npm test` for the server tests (sessions and guest sign-in, plus Socket.IO rooms, chat, positions and reactions against a real server) and `npm run typecheck` to typecheck both packages.
 
 ## Azure
 
@@ -47,7 +49,7 @@ Logs go to the platform Log Analytics workspace. The Google client secret and th
 4. Push to `main`. CI tests, creates the registry on the first run, builds and pushes the image, then applies.
 5. Add the `oauth_redirect_uri` output to the Google OAuth client's redirect URIs.
 
-`youtube.readonly` is a *sensitive* scope. While the Google OAuth consent screen is in **Testing**, only listed test users (up to 100) can sign in. Opening it to everyone requires Google's app verification.
+`youtube.readonly` is a *sensitive* scope. While the Google OAuth consent screen is in **Testing**, only listed test users (up to 100) can sign in. Opening it to everyone requires Google's app verification, which is why Google sign-in is currently off. Infra still passes the client ID and secret to the app, so turning it back on only needs a `GOOGLE_SIGN_IN = "on"` env var on the container app in `infra/main.tf`.
 
 ### Cost
 
