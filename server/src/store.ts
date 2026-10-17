@@ -86,6 +86,8 @@ export interface ReactionStore {
   countByUser(videoId: string, userId: string): Promise<number>;
   /** How many of each emoji every video got from reactions thrown at or after `since` (ms). */
   countsSince(since: number): Promise<EmojiCount[]>;
+  /** Every video with at least one reaction, each once. */
+  reactedVideoIds(): Promise<string[]>;
 }
 
 export interface EmojiCount {
@@ -109,6 +111,10 @@ export class MemoryReactionStore implements ReactionStore {
 
   async countByUser(videoId: string, userId: string): Promise<number> {
     return (this.byVideo.get(videoId) ?? []).filter((r) => r.userId === userId).length;
+  }
+
+  async reactedVideoIds(): Promise<string[]> {
+    return [...this.byVideo].filter(([, list]) => list.length > 0).map(([videoId]) => videoId);
   }
 
   async countsSince(since: number): Promise<EmojiCount[]> {
@@ -168,7 +174,13 @@ export class CosmosReactionStore implements ReactionStore {
     return resources[0] ?? 0;
   }
 
-  /** The one cross-partition query; GROUP BY keeps the result to one row per video and emoji. */
+  /** Cross-partition, but DISTINCT keeps the result to one row per video. */
+  async reactedVideoIds(): Promise<string[]> {
+    const { resources } = await this.container.items.query<string>("SELECT DISTINCT VALUE c.videoId FROM c").fetchAll();
+    return resources;
+  }
+
+  /** Cross-partition; GROUP BY keeps the result to one row per video and emoji. */
   async countsSince(since: number): Promise<EmojiCount[]> {
     const { resources } = await this.container.items
       .query<EmojiCount>({

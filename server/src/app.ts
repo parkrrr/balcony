@@ -7,6 +7,7 @@ import { authRouter } from "./auth.js";
 import { attachChat, sameOrigin } from "./chat.js";
 import type { Config } from "./config.js";
 import { mostReactedRouter, type TitleLookup } from "./mostReacted.js";
+import { randomVideoRouter } from "./randomVideo.js";
 import type { MessageStore, ReactionStore } from "./store.js";
 
 export function createAppServer(
@@ -26,6 +27,7 @@ export function createAppServer(
   });
   app.use(authRouter(config));
   app.use(mostReactedRouter(config, reactions, titleLookup));
+  app.use(randomVideoRouter(config, reactions));
 
   if (existsSync(config.webDist)) {
     // Vite content-hashes everything under /assets, so those can be cached forever.

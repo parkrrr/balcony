@@ -3,9 +3,10 @@ import type { MostReacted as Video } from "../types";
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact" });
 
-/** The week's most reacted videos. Renders nothing until there's something to show. */
+/** The week's most reacted videos: the whole landing page. */
 export function MostReacted() {
-  const [videos, setVideos] = useState<Video[]>([]);
+  // Null until loaded, so the empty state doesn't flash up before the list arrives.
+  const [videos, setVideos] = useState<Video[] | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -15,7 +16,15 @@ export function MostReacted() {
     return () => controller.abort();
   }, []);
 
-  if (!videos.length) return null;
+  if (!videos) return null;
+  if (!videos.length) {
+    return (
+      <section className="most-reacted most-reacted-empty">
+        <h2>Nothing's been reacted to this week</h2>
+        <p className="muted">Paste a YouTube link in the search bar above to open its room, or roll the 🎲 for a random one.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="most-reacted" aria-labelledby="most-reacted-heading">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Chat } from "./components/Chat";
 import { MostReacted } from "./components/MostReacted";
+import { RandomVideo } from "./components/RandomVideo";
 import { Player, type PlayerTick } from "./components/Player";
 import { Rain, type RainHandle } from "./components/Rain";
 import { ReactionBar } from "./components/ReactionBar";
@@ -36,7 +37,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar me={me} />
+      <TopBar me={me} videoId={isVideoId(videoId) ? videoId : null} />
       {isVideoId(videoId) ? <Watch key={videoId} videoId={videoId} me={me} /> : <Home />}
     </div>
   );
@@ -122,7 +123,7 @@ function SignIn({ google, onSignedIn }: { google: boolean; onSignedIn: (me: User
   );
 }
 
-function TopBar({ me }: { me: User }) {
+function TopBar({ me, videoId }: { me: User; videoId: string | null }) {
   const signOut = async () => {
     await fetch("/auth/logout", { method: "POST" });
     window.location.reload();
@@ -132,7 +133,7 @@ function TopBar({ me }: { me: User }) {
       <a className="brand" href="/">
         <Logo /> Balcony
       </a>
-      <VideoForm compact />
+      <VideoForm watching={videoId ?? undefined} />
       <div className="me">
         <span className="me-name">{me.name}</span>
         <button type="button" className="link" onClick={signOut}>
@@ -146,19 +147,25 @@ function TopBar({ me }: { me: User }) {
 function Home() {
   return (
     <div className="home">
-      <div className="card">
-        <h1>Pick a video</h1>
-        <p className="muted">Paste a YouTube link or video ID to open its chat room.</p>
-        <VideoForm />
-      </div>
       <MostReacted />
     </div>
   );
 }
 
-function VideoForm({ compact = false }: { compact?: boolean }) {
+/**
+ * The top bar's search box, the same on every page: paste a link to open it, or roll the die.
+ * `watching` is the open video, if any, so the die never lands on it.
+ */
+function VideoForm({ watching }: { watching?: string }) {
   const [value, setValue] = useState("");
   const [invalid, setInvalid] = useState(false);
+
+  useEffect(() => {
+    if (!invalid) return;
+    const id = setTimeout(() => setInvalid(false), 4_000);
+    return () => clearTimeout(id);
+  }, [invalid]);
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const id = parseVideoId(value);
@@ -166,7 +173,7 @@ function VideoForm({ compact = false }: { compact?: boolean }) {
     window.location.assign(`/watch?v=${id}`);
   };
   return (
-    <form className={`video-form${compact ? " compact" : ""}`} onSubmit={submit}>
+    <form className="video-form" onSubmit={submit}>
       <input
         value={value}
         onChange={(e) => {
@@ -177,8 +184,17 @@ function VideoForm({ compact = false }: { compact?: boolean }) {
         aria-label="YouTube link or video ID"
         aria-invalid={invalid}
       />
-      <button type="submit">Open</button>
-      {invalid && !compact && <div className="form-error">That doesn't look like a YouTube video link.</div>}
+      <button type="submit" className="video-form-go" title="Open video" aria-label="Open video">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden>
+          <path d="M4 10h11M10.5 5l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <RandomVideo exclude={watching} />
+      {invalid && (
+        <span className="search-error" role="status">
+          That doesn't look like a YouTube video link.
+        </span>
+      )}
     </form>
   );
 }
