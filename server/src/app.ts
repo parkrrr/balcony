@@ -6,9 +6,13 @@ import { Server } from "socket.io";
 import { authRouter } from "./auth.js";
 import { attachChat, sameOrigin } from "./chat.js";
 import type { Config } from "./config.js";
-import type { MessageStore } from "./store.js";
+import type { MessageStore, ReactionStore } from "./store.js";
 
-export function createAppServer(config: Config, store: MessageStore): { server: HttpServer; io: Server } {
+export function createAppServer(
+  config: Config,
+  store: MessageStore,
+  reactions: ReactionStore,
+): { server: HttpServer; io: Server } {
   const app = express();
   // Container Apps terminates TLS at its ingress and forwards X-Forwarded-Proto/Host.
   app.set("trust proxy", true);
@@ -37,7 +41,7 @@ export function createAppServer(config: Config, store: MessageStore): { server: 
     serveClient: false,
     allowRequest: (req, callback) => callback(null, sameOrigin(config, req)),
   });
-  attachChat(io, config, store);
+  attachChat(io, config, store, reactions);
 
   return { server, io };
 }

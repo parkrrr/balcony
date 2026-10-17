@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import type { ChatMessage, Peer } from "./types";
+import { insertSorted } from "./reactions";
+import type { ChatMessage, Peer, Reaction } from "./types";
 
 export type RoomStatus = "connecting" | "connected" | "disconnected" | "unauthorized";
 
@@ -17,12 +18,16 @@ const MAX_MESSAGES = 500;
 /**
  * One Socket.IO connection per video. Chat goes through the server; positions are
  * relayed to the room and each client keeps its own view of who is where.
+ * `onReaction` hears about reactions other viewers throw while we're connected.
  */
-export function useRoom(videoId: string) {
+export function useRoom(videoId: string, onReaction?: (r: Reaction) => void) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [peers, setPeers] = useState<Map<string, Peer>>(() => new Map());
+  const [reactions, setReactions] = useState<Reaction[]>([]);
   const [status, setStatus] = useState<RoomStatus>("connecting");
   const socketRef = useRef<Socket | null>(null);
+  const onReactionRef = useRef(onReaction);
+  onReactionRef.current = onReaction;
   const latest = useRef<Playback | null>(null);
   const lastSent = useRef<(Playback & { at: number }) | null>(null);
 
@@ -56,6 +61,11 @@ export function useRoom(videoId: string) {
     socket.on("connect_error", (err) => setStatus(err.message === "unauthorized" ? "unauthorized" : "disconnected"));
     socket.on("history", (history: ChatMessage[]) => setMessages(history));
     socket.on("chat", (m: ChatMessage) => setMessages((prev) => [...prev, m].slice(-MAX_MESSAGES)));
+    socket.on("reactions", (all: Reaction[]) => setReactions([...all].sort((a, b) => a.videoTime - b.videoTime)));
+    socket.on("reaction", (r: Reaction) => {
+      setReactions((prev) => insertSorted(prev, r));
+      onReactionRef.current?.(r);
+    });
     socket.on("who", () => sendPosition(true));
     socket.on("position", (p: Omit<Peer, "at">) => setPeers((prev) => new Map(prev).set(p.id, { ...p, at: Date.now() })));
     socket.on("left", ({ id }: { id: string }) =>
@@ -85,6 +95,7 @@ export function useRoom(videoId: string) {
       lastSent.current = null;
       setMessages([]);
       setPeers(new Map());
+      setReactions([]);
     };
   }, [videoId, sendPosition]);
 
@@ -107,5 +118,20 @@ export function useRoom(videoId: string) {
     }
   }, []);
 
-  return { messages, peers, status, report, send };
+  const react = useCallback(async (emoji: string, videoTime: number): Promise<{ reaction: Reaction } | { error: string }> => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return { error: "Not connected." };
+    try {
+      const res: { ok: true; reaction: Reaction } | { error: string } = await socket
+        .timeout(10_000)
+        .emitWithAck("react", { emoji, videoTime });
+      if ("error" in res) return res;
+      setReactions((prev) => insertSorted(prev, res.reaction));
+      return { reaction: res.reaction };
+    } catch {
+      return { error: "Couldn't send that reaction. Try again." };
+    }
+  }, []);
+
+  return { messages, peers, reactions, status, report, send, react };
 }

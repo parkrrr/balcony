@@ -16,6 +16,7 @@ infra/    OpenTofu for the Azure resources, deployed into the alz-parkrrr "balco
 - **Premium / ads**: the IFrame player can't be handed an OAuth token. It plays as whichever Google account the browser is signed in to on youtube.com, so Premium applies when the viewer is signed in there and the browser allows YouTube's cookies in embeds. Signing in to Balcony doesn't change playback.
 - **Positions**: each client reports `{t, playing, rate}` when it changes and every 5 seconds as a heartbeat. The server relays reports to the room, and clients estimate where everyone is between reports. Nothing about positions is stored.
 - **History**: the last 100 messages per video, in Cosmos DB (container partitioned on `/videoId`). With no `COSMOS_ENDPOINT` set, history is kept in memory.
+- **Reactions**: emoji pinned to a moment in the video, replayed for everyone who reaches it. Stored in a second Cosmos container, `reactions`, or in memory without Cosmos.
 
 ## Local development
 
@@ -60,4 +61,4 @@ Roughly $13–18/month at low traffic: about $7.30 for the Cosmos private endpoi
 ## Docs
 
 - [YouTube API compliance](docs/youtube-compliance.md): what still has to change before launch.
-- [Timed reactions](docs/timed-reactions.md): planned feature for throwing emoji at the screen at a point in the video.
+- [Timed reactions](docs/timed-reactions.md): emoji that viewers throw at a moment in the video, raining down the page background behind the player.

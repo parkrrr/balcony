@@ -126,6 +126,15 @@ resource "azurerm_cosmosdb_sql_container" "messages" {
   partition_key_paths = ["/videoId"]
 }
 
+# Timed reactions, partitioned the same way: a room loads all of its reactions in one query.
+resource "azurerm_cosmosdb_sql_container" "reactions" {
+  name                = "reactions"
+  resource_group_name = data.azurerm_resource_group.workload.name
+  account_name        = azurerm_cosmosdb_account.main.name
+  database_name       = azurerm_cosmosdb_sql_database.main.name
+  partition_key_paths = ["/videoId"]
+}
+
 resource "azurerm_cosmosdb_sql_role_assignment" "app" {
   resource_group_name = data.azurerm_resource_group.workload.name
   account_name        = azurerm_cosmosdb_account.main.name

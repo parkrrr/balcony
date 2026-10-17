@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { loadYouTubeApi } from "../youtube";
 
 export interface PlayerTick {
@@ -9,6 +9,7 @@ export interface PlayerTick {
 }
 
 interface Props {
+  ref?: Ref<HTMLDivElement>;
   videoId: string;
   onReady: (player: YT.Player) => void;
   onTick: (tick: PlayerTick) => void;
@@ -16,7 +17,7 @@ interface Props {
 
 const TICK_MS = 500;
 
-export function Player({ videoId, onReady, onTick }: Props) {
+export function Player({ ref, videoId, onReady, onTick }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const callbacks = useRef({ onReady, onTick });
   callbacks.current = { onReady, onTick };
@@ -75,7 +76,7 @@ export function Player({ videoId, onReady, onTick }: Props) {
   }, [videoId]);
 
   return (
-    <div className="player">
+    <div ref={ref} className="player">
       <div ref={host} className="player-frame" />
       {error && <div className="player-error">{error}</div>}
     </div>
