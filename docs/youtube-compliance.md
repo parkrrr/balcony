@@ -78,7 +78,7 @@ The rule has no exceptions. When a video can't play, `.player-error` in `Player.
 
 **Fix:** show the message below the player, or remove the player and show the message in its place. Don't layer it on top.
 
-This rule also limits planned features. Nothing the app draws can go on top of the player, even briefly or transparently. The [timed reactions](timed-reactions.md) design keeps everything around the player for this reason.
+This rule also limits features. Nothing the app draws can go on top of the player, even briefly or transparently. [Timed reactions](timed-reactions.md) fall on a background layer stacked underneath the player for this reason.
 
 ## Should fix
 

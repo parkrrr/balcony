@@ -67,3 +67,82 @@ export class CosmosStore implements MessageStore {
     return resources.reverse();
   }
 }
+
+/** Anonymous on purpose: no name or avatar, so reactions sit outside the 30-day limit on stored YouTube data. */
+export interface Reaction {
+  id: string;
+  videoId: string;
+  userId: string;
+  emoji: string;
+  /** Thrower's playback position in seconds; the reaction replays when anyone's playhead reaches it. */
+  videoTime: number;
+  createdAt: number;
+}
+
+export interface ReactionStore {
+  add(reaction: Reaction): Promise<void>;
+  /** Every reaction on a video, in no particular order. */
+  forVideo(videoId: string): Promise<Reaction[]>;
+  countByUser(videoId: string, userId: string): Promise<number>;
+}
+
+export class MemoryReactionStore implements ReactionStore {
+  private readonly byVideo = new Map<string, Reaction[]>();
+
+  async add(reaction: Reaction): Promise<void> {
+    const list = this.byVideo.get(reaction.videoId) ?? [];
+    list.push(reaction);
+    this.byVideo.set(reaction.videoId, list);
+  }
+
+  async forVideo(videoId: string): Promise<Reaction[]> {
+    return [...(this.byVideo.get(videoId) ?? [])];
+  }
+
+  async countByUser(videoId: string, userId: string): Promise<number> {
+    return (this.byVideo.get(videoId) ?? []).filter((r) => r.userId === userId).length;
+  }
+}
+
+/** Partitioned on /videoId like messages, so both queries stay in one partition. */
+export class CosmosReactionStore implements ReactionStore {
+  private readonly container: Container;
+
+  constructor(endpoint: string, database: string, container: string) {
+    const client = new CosmosClient({ endpoint, aadCredentials: new DefaultAzureCredential() });
+    this.container = client.database(database).container(container);
+  }
+
+  async add(reaction: Reaction): Promise<void> {
+    await this.container.items.create(reaction);
+  }
+
+  async forVideo(videoId: string): Promise<Reaction[]> {
+    const { resources } = await this.container.items
+      .query<Reaction>(
+        {
+          query: "SELECT c.id, c.videoId, c.userId, c.emoji, c.videoTime, c.createdAt FROM c WHERE c.videoId = @videoId",
+          parameters: [{ name: "@videoId", value: videoId }],
+        },
+        { partitionKey: videoId },
+      )
+      .fetchAll();
+    return resources;
+  }
+
+  async countByUser(videoId: string, userId: string): Promise<number> {
+    const { resources } = await this.container.items
+      .query<number>(
+        {
+          query: "SELECT VALUE COUNT(1) FROM c WHERE c.videoId = @videoId AND c.userId = @userId",
+          parameters: [
+            { name: "@videoId", value: videoId },
+            { name: "@userId", value: userId },
+          ],
+        },
+        { partitionKey: videoId },
+      )
+      .fetchAll();
+    return resources[0] ?? 0;
+  }
+}

@@ -1,38 +1,31 @@
 # Timed reactions
 
-**Status:** planned, not built.
+**Status:** built.
 
-Viewers throw emoji at the screen, for example a 🍅 at a bad take. Each reaction is pinned to the moment in the video when it was thrown. Anyone who watches later, or is behind in the video, sees it fly at exactly that point. Each viewer can switch reactions off.
+Viewers throw emoji, for example a 🍅 at a bad take. Each reaction is pinned to the moment in the video when it was thrown, and it rains down the page background at that moment. That happens for viewers watching live and for anyone who watches later. Each viewer can switch reactions off.
 
 ## Requirements
 
 - **Any standard emoji** can be thrown. 🍅 is just the obvious example.
-- **Pinned to video time.** A reaction plays when a viewer's playhead reaches the time it was thrown, for viewers who are watching live and for anyone who watches later.
-- **Aimed.** The thrower chooses where it lands, within the limits in [Where reactions can go](#where-reactions-can-go).
-- **Limits per person:** at most 1 reaction per second, and at most 50 per video. One person can't flood the screen, but when lots of people throw at the same moment, the pile-up should be obvious.
+- **Pinned to video time.** A reaction plays when a viewer's playhead reaches the time it was thrown.
+- **Limits per person:** at most 1 reaction per second, and at most 50 per video. One person can't flood the screen, but when lots of people throw at the same moment, the downpour should be obvious.
 - **Can be switched off.** Each viewer has a "Show reactions" switch so reactions don't disrupt their viewing.
 
-## Where reactions can go
+## Where reactions go: behind the player, never in front
 
 YouTube forbids drawing anything over the embedded player. From [Required Minimum Functionality](https://developers.google.com/youtube/terms/required-minimum-functionality), under "Overlays and frames":
 
 > You must not display overlays, frames, or other visual elements in front of any part of a YouTube embedded player, including player controls.
 
-[Developer Policies](https://developers.google.com/youtube/terms/developer-policies) III.I.6 adds that clients must not *"modify, build upon, or block any portion or functionality of a YouTube player."* There's no exception for small, short or semi-transparent effects. So:
+[Developer Policies](https://developers.google.com/youtube/terms/developer-policies) III.I.6 adds that clients must not *"modify, build upon, or block any portion or functionality of a YouTube player."* There's no exception for small, short or semi-transparent effects.
 
-- Reactions never land on, or fly across, the video. Their flight paths have to stay outside the player's rectangle too.
-- Aiming can't use a click-catching layer over the player, because an invisible layer is still a "visual element in front of" the player.
+So reactions are part of the page **background**. Emoji fall from the top of the stage to the bottom on a layer stacked *underneath* everything else on the stage. The player is opaque, so a drop that passes behind it is hidden for that stretch. Nothing is ever painted on top of the video or its controls, and nothing catches clicks over it.
 
-Instead, the player is treated as a stage, and reactions hit everything around it:
+- **Gutters.** With reactions on, wide screens shrink the player slightly, up to 96px on each side (`.reactions-on .player` in `styles.css`), so the rain has somewhere to be seen. Drops pick a horizontal spot in the strips left and right of the player, weighted by width. If there are no strips (phones, narrow windows), they fall anywhere and show above and below the player. Turning reactions off gives the full width back.
+- **No aiming.** An earlier design had throwers aim at a spot in a "splash zone" around the player. Rain falls at random positions instead, which is simpler and needs no per-reaction position data.
+- **Player size.** The gutters never shrink the player below the 200×200 minimum (compliance item 6). They're zero below 900px of viewport width.
 
-- **Splash zone.** On wide screens the player sits inside a margin, styled as curtains or a proscenium. Reactions fly up from the audience side, splat in the margin next to the screen, and slide down.
-- **Aim along the edges.** The thrower clicks a spot in the splash zone, for example the top-left corner of the screen. The landing spot is stored as `{side: "top" | "right" | "bottom" | "left", offset: 0..1}` along that edge, so it stays correct at any player size.
-- **On the timeline.** Each reaction also pops above the timeline bar at its time. This is the main view on phones, which have no room for a splash zone. Phones also get a short strip of recent reactions under the player.
-- **Player size.** The splash zone must never shrink the player below the 200×200 minimum (compliance item 6).
-
-## Design
-
-### Data
+## Data
 
 ```ts
 interface Reaction {
@@ -40,42 +33,42 @@ interface Reaction {
   videoId: string;
   userId: string;
   emoji: string;
-  videoTime: number;                                // seconds; required
-  side: "top" | "right" | "bottom" | "left";
-  offset: number;                                   // 0..1 along that side
+  videoTime: number; // seconds; required
   createdAt: number;
 }
 ```
 
-- **No stored names or avatars.** Reactions are anonymous on screen, so they leave out the `name` and `avatar` that chat messages store. That keeps them clear of the 30-day limit on stored YouTube data (compliance item 3). If "who threw this" is wanted later, look the name up live by `userId`.
-- **Storage.** A second Cosmos container, `reactions`, partitioned on `/videoId` like `messages`. That's one more `azurerm_cosmosdb_sql_container` in `infra/main.tf`, at no fixed cost on serverless.
-- **`ReactionStore`.** Memory and Cosmos versions, next to `MessageStore` in `server/src/store.ts`. It provides `add`, `forVideo(videoId)` and `countByUser(videoId, userId)`.
+- **Anonymous.** Reactions don't store names or avatars, which keeps them clear of the 30-day limit on stored YouTube data (compliance item 3). Viewers only ever receive `{ id, emoji, videoTime }`.
+- **Storage.** A second Cosmos container, `reactions`, partitioned on `/videoId` like `messages` (`azurerm_cosmosdb_sql_container.reactions` in `infra/main.tf`). It can be renamed with `COSMOS_REACTIONS_CONTAINER`. Without Cosmos, reactions are kept in memory.
+- **`ReactionStore`** in `server/src/store.ts` has memory and Cosmos versions, with `add`, `forVideo(videoId)` and `countByUser(videoId, userId)`.
 - **Deletion.** Any "delete my data" flow (compliance item 4) must delete reactions too.
 
-### Server (`server/src/chat.ts`)
+## Server (`server/src/chat.ts`)
 
-A new `react` event checks four things:
+The `react` event (`{ emoji, videoTime }`) checks that:
 
-- `emoji` is exactly one grapheme, checked with `Intl.Segmenter`. It must match `\p{Extended_Pictographic}` or be a flag (a pair of regional indicators).
-- `side` is one of the four sides, and `offset` is between 0 and 1.
-- **Rate:** the sender has thrown no more than 1 reaction per second, enforced per user the same way chat's rate limit is.
-- **Quota:** the sender has no more than 50 reactions on this video. This is checked against `countByUser` in the store, not memory, so it survives restarts.
+- `emoji` is exactly one grapheme (`Intl.Segmenter`), and is `\p{Extended_Pictographic}`, a flag (two regional indicators) or a keycap such as 1️⃣;
+- `videoTime` is a valid time;
+- this socket hasn't thrown in the last second;
+- the user has used fewer than 50 reactions on this video, counted from the store so the quota survives restarts and covers every tab.
 
-If a check fails, the server acks an error such as "You've used all 50 reactions for this video". Otherwise it saves the reaction, relays it to the room, and acks with the sender's remaining quota.
+On failure it acks `{ error }`. Otherwise it saves the reaction, sends `reaction` to the rest of the room, and acks `{ ok, reaction }`.
 
-On join, the server sends the video's reactions along with chat history. Unlike chat history, they aren't capped at 100.
+The quota is a quiet backstop against flooding, not a budget to spend, so the remaining count is never sent to clients or shown. Someone who hits it just sees "You've reached the reaction limit for this video." when they try to throw another.
 
-### Web
+On join, the server sends `reactions`: every reaction on the video, uncapped.
 
-- **Replay.** The client keeps the room's reactions sorted by `videoTime`. On each player tick, it plays every reaction whose time falls between the previous playhead and the current one, during normal forward playback only. Seeking, including clicking someone on the timeline, doesn't trigger a burst of everything skipped.
-- **Live.** A reaction you throw plays for you immediately. Everyone else gets it over the socket, and it plays when their playhead reaches that time. Anyone already past that point sees it only on the timeline.
-- **Throwing.** A bar under the player has quick picks (🍅 🥚 💩 ❤️ 😂 👏) plus a full emoji picker, and shows how many reactions you have left (for example "38 left"). On wide screens, choosing an emoji arms aim mode: the splash zone highlights and the cursor becomes a crosshair, while the player itself stays untouched. The next click in the zone throws the emoji, and Esc cancels. On phones, the emoji goes straight onto the timeline at the current time.
-- **Animation.** CSS keyframes in a layer clipped to the splash zone, with `pointer-events: none` except while aiming.
-- **Switch.** "Show reactions" is on by default and saved in `localStorage`, with reads and writes in try/catch. When it's off, nothing animates in the splash zone or on the timeline. You can still throw reactions.
+## Web
+
+- **Replay** (`Watch` in `App.tsx`). The client keeps the room's reactions sorted by `videoTime`. On each player tick (~0.5s), it drops every reaction between the previous playhead and the current one, but only during normal forward playback. A jump of more than 2.5s counts as a seek and plays nothing, so seeking doesn't set off a burst of everything skipped.
+- **Live.** Your own reaction drops as soon as the server accepts it. Other viewers' reactions arrive over the socket. If one is ahead of your playhead, replay plays it when you get there. If it's up to 3s behind you, it drops right away, so a room watching together still sees each other's reactions when their playheads drift a little. Anything further behind waits for a rewatch.
+- **Throwing** (`ReactionBar.tsx`). Under the player there are quick picks (🍅 🥚 💩 ❤️ 😂 👏) and a "+" for any other emoji. On desktop, "+" opens a searchable picker (`EmojiPicker.tsx`, using `emoji-picker-element`). The library loads on first open, and its emoji data is served from our own `/assets` rather than a CDN. On touch devices, "+" opens a field that raises the system emoji keyboard, and an emoji is thrown as soon as it's tapped. The buttons rest for 1s after each throw to match the server's limit.
+- **Animation** (`Rain.tsx`). Drops are plain DOM nodes animated with CSS keyframes. Each has a random size, drift, spin and duration, and is removed when its animation ends. At most 150 are on screen at once, purely for performance. With `prefers-reduced-motion`, drops fade in and out in place instead of falling.
+- **Hotspots** (`hotspots()` in `reactions.ts`, drawn by `Timeline.tsx`). Under the timeline bar, busy moments show their most-thrown emoji, bigger and brighter the busier they are. Clicking one jumps to 2s before the burst, so it rains on the way in. The video is cut into 100 equal slices of time. Slicing never depends on screen size, so every viewer sees the same hotspots. A slice counts as a hotspot when it has at least 10% of the busiest slice's reactions. So a single reaction on a quiet video shows up, but one stray reaction next to a burst of thousands doesn't. The threshold is measured against the peak rather than the total, so a long video with reactions spread across it still shows its highlights. Busy slices with at most two quiet slices between them merge into one hotspot, and its tooltip shows the combined count. The only per-screen difference is on very narrow timelines (phones): when two hotspots would sit closer than 24px, only the stronger one is drawn.
+- **Switch.** "Show reactions" is on by default. It's saved in `localStorage` under `balcony.showReactions`, with reads and writes in try/catch. When it's off, the rain layer, the gutters and the hotspot row go away, but you can still throw.
 
 ## Open questions
 
-- **Volume.** There's a cap per person but no cap per video, so a popular video could collect thousands of reactions. That might call for loading them in windows around the playhead, or capping how many animate at once purely for performance, while keeping the pile-up visible.
+- **Volume.** There's a cap per person but no cap per video, so a popular video could collect thousands of reactions, all sent on join. That might call for loading them in windows around the playhead.
 - **Undo.** Can people take back their own reaction, and does that give them back one of their 50?
 - **Emoji rendering.** Emoji are drawn by each viewer's own system, so the same reaction looks different across platforms. That's probably fine.
-- **Splash zone size.** How much margin can the layout give up on mid-size screens before the video gets too small?

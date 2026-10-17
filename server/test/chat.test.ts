@@ -4,10 +4,10 @@ import { after, before, describe, test } from "node:test";
 import { io as connect, type Socket } from "socket.io-client";
 import { createAppServer } from "../src/app.js";
 import { safeReturnTo } from "../src/auth.js";
-import type { PositionEvent } from "../src/chat.js";
+import { REACTION_QUOTA, isEmoji, type PositionEvent, type PublicReaction } from "../src/chat.js";
 import type { Config } from "../src/config.js";
 import { SESSION_COOKIE, readSession, signSession, type User } from "../src/session.js";
-import { MemoryStore, type ChatMessage } from "../src/store.js";
+import { MemoryReactionStore, MemoryStore, type ChatMessage } from "../src/store.js";
 
 const config: Config = {
   port: 0,
@@ -25,7 +25,8 @@ const alice: User = { id: "alice", name: "Alice", avatar: null, channelId: "UCal
 const bob: User = { id: "bob", name: "Bob", avatar: "https://example.com/bob.png", channelId: null };
 
 let url: string;
-const { server, io } = createAppServer(config, new MemoryStore());
+const reactionStore = new MemoryReactionStore();
+const { server, io } = createAppServer(config, new MemoryStore(), reactionStore);
 const sockets: Socket[] = [];
 
 before(async () => {
@@ -131,5 +132,50 @@ describe("chat socket", () => {
     assert.ok("error" in (await s.emitWithAck("chat", { text: "x".repeat(501) })));
     for (let i = 0; i < 5; i++) assert.deepEqual(await s.emitWithAck("chat", { text: `m${i}` }), { ok: true });
     assert.deepEqual(await s.emitWithAck("chat", { text: "one too many" }), { error: "Slow down a little." });
+  });
+});
+
+describe("reactions", () => {
+  test("accepts exactly one emoji", () => {
+    for (const ok of ["🍅", "❤️", "👍🏽", "👨‍👩‍👧‍👦", "🇯🇵", "🏳️‍🌈", "1️⃣", "#️⃣"]) assert.ok(isEmoji(ok), ok);
+    for (const bad of ["", "a", "1", "#", "🍅🍅", "🍅 ", "hi🍅", "🇯", "1️⃣1️⃣", 42, null]) assert.ok(!isEmoji(bad), String(bad));
+  });
+
+  test("relays reactions anonymously and replays them to later joiners", async () => {
+    const room = "ccccccccccc";
+    const a = await join(alice, room);
+    assert.deepEqual(await next<PublicReaction[]>(a, "reactions"), []);
+
+    const b = await join(bob, room);
+    await next(b, "reactions");
+    const live = next<PublicReaction>(b, "reaction");
+    const ack = await a.emitWithAck("react", { emoji: "🍅", videoTime: 61.5 });
+    // No remaining-quota count: the limit is enforced quietly.
+    assert.deepEqual(Object.keys(ack).sort(), ["ok", "reaction"]);
+    assert.deepEqual(await live, ack.reaction);
+    assert.deepEqual(Object.keys(ack.reaction).sort(), ["emoji", "id", "videoTime"]);
+
+    const c = await join(alice, room);
+    assert.deepEqual(await next<PublicReaction[]>(c, "reactions"), [{ id: ack.reaction.id, emoji: "🍅", videoTime: 61.5 }]);
+  });
+
+  test("validates, rate-limits and caps reactions", async () => {
+    const room = "ddddddddddd";
+    const s = await join(alice, room);
+    await next(s, "reactions");
+    assert.ok("error" in (await s.emitWithAck("react", { emoji: "lol", videoTime: 1 })));
+    assert.ok("error" in (await s.emitWithAck("react", { emoji: "🍅" })));
+    assert.equal((await s.emitWithAck("react", { emoji: "🍅", videoTime: 1 })).ok, true);
+    assert.deepEqual(await s.emitWithAck("react", { emoji: "🥚", videoTime: 2 }), { error: "One reaction a second, please." });
+
+    // Fill the rest of the quota directly rather than waiting out the rate limit 49 times.
+    for (let i = 1; i < REACTION_QUOTA; i++) {
+      await reactionStore.add({ id: `seed${i}`, videoId: room, userId: "alice", emoji: "🥚", videoTime: i, createdAt: 0 });
+    }
+    const fresh = await join(alice, room);
+    await next(fresh, "reactions");
+    assert.deepEqual(await fresh.emitWithAck("react", { emoji: "🍅", videoTime: 3 }), {
+      error: "You've reached the reaction limit for this video.",
+    });
   });
 });

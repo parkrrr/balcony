@@ -8,7 +8,7 @@ export interface Config {
   googleClientSecret: string;
   sessionSecret: string;
   secureCookies: boolean;
-  cosmos: { endpoint: string; database: string; container: string } | null;
+  cosmos: { endpoint: string; database: string; container: string; reactionsContainer: string } | null;
   webDist: string;
 }
 
@@ -37,6 +37,7 @@ export function loadConfig(): Config {
           endpoint: env.COSMOS_ENDPOINT,
           database: env.COSMOS_DATABASE ?? "balcony",
           container: env.COSMOS_CONTAINER ?? "messages",
+          reactionsContainer: env.COSMOS_REACTIONS_CONTAINER ?? "reactions",
         }
       : null,
     webDist: env.WEB_DIST ?? path.resolve(import.meta.dirname, "../../web/dist"),

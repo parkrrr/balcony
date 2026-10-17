@@ -214,6 +214,14 @@ a {
   grid-template-columns: minmax(0, 1fr) var(--chat-width);
 }
 
+/* The rain sits under the stage, so the opaque player always paints over any drop behind it. */
+.stage-wrap {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-height: 0;
+}
+
 .stage {
   min-height: 0;
   overflow-y: auto;
@@ -223,11 +231,17 @@ a {
 .player {
   position: relative;
   aspect-ratio: 16 / 9;
-  max-height: calc(100vh - 220px);
+  /* Leaves room below for the reaction bar, timeline and hotspots without scrolling. */
+  max-height: calc(100vh - 280px);
   margin: 0 auto;
   background: black;
   border-radius: 12px;
   overflow: hidden;
+}
+
+/* With reactions on, wide screens give up a little video width so the rain has somewhere to fall. */
+.reactions-on .player {
+  max-width: calc(100% - 2 * clamp(0px, (100vw - 900px) / 6, 96px));
 }
 
 .player-frame,
@@ -245,6 +259,156 @@ a {
   padding: 24px;
   text-align: center;
   background: rgb(0 0 0 / 0.85);
+}
+
+/* Reactions */
+
+.rain {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.rain-drop {
+  position: absolute;
+  top: calc(var(--size) * -1.5);
+  left: var(--x);
+  font-size: var(--size);
+  line-height: 1;
+  user-select: none;
+  will-change: transform;
+  animation: rain-fall var(--duration) cubic-bezier(0.4, 0, 0.9, 0.6) forwards;
+}
+
+@keyframes rain-fall {
+  to {
+    transform: translate(var(--drift), var(--fall)) rotate(var(--spin));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rain-drop {
+    top: var(--y);
+    animation: rain-fade 2s ease-in-out forwards;
+  }
+
+  @keyframes rain-fade {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    30%,
+    70% {
+      opacity: 1;
+    }
+  }
+}
+
+.reaction-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+
+.reaction-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.reaction-pick {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 18px;
+  transition: transform 0.1s;
+}
+
+.reaction-pick:not(:disabled):hover {
+  background: var(--surface-2);
+  transform: scale(1.12);
+}
+
+.reaction-pick:disabled {
+  opacity: 0.5;
+}
+
+.reaction-more {
+  color: var(--muted);
+}
+
+.reaction-more-wrap {
+  position: relative;
+}
+
+.emoji-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+}
+
+/* The picker renders in a shadow root; these are its theming hooks. */
+emoji-picker {
+  --background: var(--surface);
+  --border-color: var(--border);
+  --border-radius: 12px;
+  --button-active-background: var(--surface-2);
+  --button-hover-background: var(--surface-2);
+  --category-font-color: var(--muted);
+  --indicator-color: var(--accent);
+  --input-border-color: var(--border);
+  --input-font-color: var(--text);
+  --input-placeholder-color: var(--muted);
+  --outline-color: var(--accent);
+  height: 360px;
+}
+
+.reaction-custom {
+  display: flex;
+  gap: 4px;
+}
+
+.reaction-custom input {
+  width: 96px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.reaction-custom button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.reaction-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.reaction-error {
+  width: 100%;
+  color: var(--danger);
+  font-size: 12px;
 }
 
 /* Timeline */
@@ -322,6 +486,31 @@ a {
   height: 100%;
   border-radius: 3px;
   background: var(--accent);
+}
+
+/* Reaction hotspots hang just under the bar; busier moments are bigger and brighter. */
+.timeline-hotspots {
+  position: relative;
+  height: 26px;
+  margin-top: 4px;
+}
+
+.hotspot {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: calc(14px + 8px * var(--strength));
+  line-height: 1;
+  opacity: calc(0.55 + 0.45 * var(--strength));
+  transition: transform 0.1s;
+}
+
+.hotspot:hover {
+  opacity: 1;
+  transform: translateX(-50%) scale(1.2);
 }
 
 .timeline-scale {

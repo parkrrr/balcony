@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { estimatePosition, type Peer, type User } from "../types";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { hotspots } from "../reactions";
+import { estimatePosition, type Peer, type Reaction, type User } from "../types";
 import { formatTime } from "../videoId";
 import { Avatar } from "./Avatar";
 
@@ -8,6 +9,8 @@ interface Props {
   myTime: number;
   duration: number;
   peers: Map<string, Peer>;
+  /** Sorted by videoTime. Null when the viewer has reactions switched off. */
+  reactions: Reaction[] | null;
   onSeek: (seconds: number) => void;
 }
 
@@ -22,8 +25,10 @@ interface Marker {
 
 const MARKER = 28;
 const MAX_LANES = 3;
+// Hotspot markers closer than this would overlap, so only the stronger one is drawn.
+const HOTSPOT_MIN_GAP_PX = 24;
 
-export function Timeline({ me, myTime, duration, peers, onSeek }: Props) {
+export function Timeline({ me, myTime, duration, peers, reactions, onSeek }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -56,6 +61,16 @@ export function Timeline({ me, myTime, duration, peers, onSeek }: Props) {
   }, [peers, now, duration, me, myTime]);
 
   const x = (t: number) => (duration > 0 ? Math.min(1, Math.max(0, t / duration)) * width : 0);
+
+  const allSpots = useMemo(() => (reactions ? hotspots(reactions, duration) : []), [reactions, duration]);
+  // Every viewer computes the same hotspots. Only a timeline too narrow to fit them all
+  // (phones) drops the weaker of two neighbours.
+  const spots = allSpots.reduce<typeof allSpots>((kept, s) => {
+    const prev = kept.at(-1);
+    if (!prev || x(s.t) - x(prev.t) >= HOTSPOT_MIN_GAP_PX) kept.push(s);
+    else if (s.strength > prev.strength) kept[kept.length - 1] = s;
+    return kept;
+  }, []);
 
   // Stack markers that would overlap into lanes so every viewer stays clickable.
   const laneEnds: number[] = [];
@@ -97,6 +112,23 @@ export function Timeline({ me, myTime, duration, peers, onSeek }: Props) {
         <div className="timeline-bar" onClick={seekFromBar}>
           <div className="timeline-progress" style={{ width: x(myTime) }} />
         </div>
+        {/* Kept even when empty, so the layout doesn't jump when the first reaction lands. */}
+        {reactions && (
+          <div className="timeline-hotspots">
+            {spots.map((s) => (
+              <button
+                key={s.t}
+                type="button"
+                className="hotspot"
+                style={{ left: x(s.t), "--strength": s.strength } as CSSProperties}
+                title={`${s.count} ${s.count === 1 ? "reaction" : "reactions"} · ${formatTime(s.t)}`}
+                onClick={() => onSeek(s.seekTo)}
+              >
+                {s.emoji}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="timeline-scale">
           <span>{formatTime(myTime)}</span>
           <span>{duration > 0 ? formatTime(duration) : "--:--"}</span>

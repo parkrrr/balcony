@@ -31,3 +31,10 @@ export function estimatePosition(peer: Peer, now: number, duration: number): num
   const t = peer.playing ? peer.t + ((now - peer.at) / 1000) * peer.rate : peer.t;
   return duration > 0 ? Math.min(t, duration) : t;
 }
+
+/** Anonymous emoji pinned to a moment in the video. */
+export interface Reaction {
+  id: string;
+  emoji: string;
+  videoTime: number;
+}
