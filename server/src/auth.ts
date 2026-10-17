@@ -1,6 +1,7 @@
-import { createHash, randomBytes } from "node:crypto";
-import { Router, type CookieOptions, type Request } from "express";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import express, { Router, type CookieOptions, type Request } from "express";
 import { decodeJwt } from "jose";
+import { sameOrigin } from "./chat.js";
 import type { Config } from "./config.js";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, parseCookies, readSession, sign, signSession, verify, type User } from "./session.js";
 
@@ -19,9 +20,62 @@ export function origin(config: Config, req: Request): string {
   return config.baseUrl ?? `${req.protocol}://${req.get("host")}`;
 }
 
+export const MAX_NAME_LENGTH = 32;
+// Bidi controls let a name display in a different order than it's stored, e.g. to fake another name.
+const UNSAFE_CHARS = /[\p{Cc}‪-‮⁦-⁩]/gu;
+
+/** A display name as typed, tidied up; null if nothing usable is left or it's too long. */
+export function cleanName(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 200) return null;
+  // Whitespace first: tabs and newlines are control characters too, but should become spaces.
+  const name = value.normalize("NFC").replace(/\s+/g, " ").replace(UNSAFE_CHARS, "").trim();
+  return name && name.length <= MAX_NAME_LENGTH ? name : null;
+}
+
 export function authRouter(config: Config): Router {
   const router = Router();
   const cookieBase: CookieOptions = { httpOnly: true, sameSite: "lax", secure: config.secureCookies };
+  const setSession = async (res: express.Response, user: User) =>
+    res.cookie(SESSION_COOKIE, await signSession(user, config.sessionSecret), {
+      ...cookieBase,
+      path: "/",
+      maxAge: SESSION_TTL_SECONDS * 1000,
+    });
+
+  // Honor system: anyone can be anyone. Each sign-in is a new identity, and names needn't be unique.
+  router.post("/auth/guest", express.json({ limit: "1kb" }), async (req, res) => {
+    if (!sameOrigin(config, req)) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    const name = cleanName((req.body as { name?: unknown } | undefined)?.name);
+    if (!name) {
+      res.status(400).json({ error: `Pick a name of 1–${MAX_NAME_LENGTH} characters.` });
+      return;
+    }
+    // Prefixed so guest IDs can never collide with Google account IDs once that sign-in returns.
+    const user: User = { id: `guest:${randomUUID()}`, name, avatar: null, channelId: null };
+    await setSession(res, user);
+    res.json(user);
+  });
+
+  router.post("/auth/logout", (_req, res) => {
+    res.clearCookie(SESSION_COOKIE, { ...cookieBase, path: "/" });
+    res.status(204).end();
+  });
+
+  router.get("/api/me", async (req, res) => {
+    const user = await readSession(req.headers.cookie, config.sessionSecret);
+    if (!user) {
+      // Tells the sign-in screen whether to offer the Google button.
+      res.status(401).json({ error: "unauthorized", google: config.google !== null });
+      return;
+    }
+    res.json(user);
+  });
+
+  const google = config.google;
+  if (!google) return router;
 
   router.get("/auth/login", async (req, res) => {
     const state = randomBytes(16).toString("base64url");
@@ -37,7 +91,7 @@ export function authRouter(config: Config): Router {
 
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.search = new URLSearchParams({
-      client_id: config.googleClientId,
+      client_id: google.clientId,
       redirect_uri: `${origin(config, req)}/auth/callback`,
       response_type: "code",
       scope: SCOPES.join(" "),
@@ -61,43 +115,30 @@ export function authRouter(config: Config): Router {
     }
 
     try {
-      const user = await exchangeCode(config, req.query.code, String(pending.verifier), `${origin(config, req)}/auth/callback`);
-      res.cookie(SESSION_COOKIE, await signSession(user, config.sessionSecret), {
-        ...cookieBase,
-        path: "/",
-        maxAge: SESSION_TTL_SECONDS * 1000,
-      });
+      const user = await exchangeCode(google, req.query.code, String(pending.verifier), `${origin(config, req)}/auth/callback`);
+      await setSession(res, user);
     } catch (err) {
       console.error("OAuth callback failed", err);
     }
     res.redirect(returnTo);
   });
 
-  router.post("/auth/logout", (_req, res) => {
-    res.clearCookie(SESSION_COOKIE, { ...cookieBase, path: "/" });
-    res.status(204).end();
-  });
-
-  router.get("/api/me", async (req, res) => {
-    const user = await readSession(req.headers.cookie, config.sessionSecret);
-    if (!user) {
-      res.status(401).json({ error: "unauthorized" });
-      return;
-    }
-    res.json(user);
-  });
-
   return router;
 }
 
-async function exchangeCode(config: Config, code: string, verifier: string, redirectUri: string): Promise<User> {
+async function exchangeCode(
+  google: NonNullable<Config["google"]>,
+  code: string,
+  verifier: string,
+  redirectUri: string,
+): Promise<User> {
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      client_id: config.googleClientId,
-      client_secret: config.googleClientSecret,
+      client_id: google.clientId,
+      client_secret: google.clientSecret,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
       code_verifier: verifier,

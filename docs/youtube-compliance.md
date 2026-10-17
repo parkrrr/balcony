@@ -6,6 +6,14 @@ Gaps between Balcony (formerly ytchat) and the YouTube API Services policies, to
 - [Branding Guidelines](https://developers.google.com/youtube/terms/branding-guidelines)
 - [IFrame Player API reference](https://developers.google.com/youtube/iframe_api_reference)
 
+**Google sign-in is off for now (2026-10-17).** Viewers sign in as guests with a display name they choose, so the app no longer calls the YouTube Data API or receives channel names and avatars. While that's true:
+
+- Items 3 and 4 only cover messages already stored with YouTube channel names and avatars from before the switch. New messages carry guest names, which aren't YouTube data. The old messages still need the 30-day treatment (or deleting).
+- Item 5 still applies, because the embedded player is itself a YouTube API Service. The parts about Google account data and revoking Google access don't apply.
+- Everything about the player and branding (items 1, 2, 6 and 7) is unchanged.
+
+When Google sign-in comes back (`GOOGLE_SIGN_IN=on`), all of the items below apply again in full.
+
 ## Must fix
 
 ### 1. Product name
