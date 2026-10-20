@@ -10,8 +10,8 @@ interface Props {
   onThrow: (emoji: string) => Promise<string | null>;
 }
 
-// Matches the server's limit of one reaction a second, so the buttons don't invite an error.
-const COOLDOWN_MS = 1_000;
+// Matches the server's limit of one reaction every 250ms, so the buttons don't invite an error.
+const COOLDOWN_MS = 250;
 
 // Phones and tablets already have an emoji keyboard, so "+" opens that instead of a picker.
 const touchFirst = () => matchMedia("(pointer: coarse)").matches;

@@ -165,7 +165,7 @@ describe("reactions", () => {
     assert.ok("error" in (await s.emitWithAck("react", { emoji: "lol", videoTime: 1 })));
     assert.ok("error" in (await s.emitWithAck("react", { emoji: "🍅" })));
     assert.equal((await s.emitWithAck("react", { emoji: "🍅", videoTime: 1 })).ok, true);
-    assert.deepEqual(await s.emitWithAck("react", { emoji: "🥚", videoTime: 2 }), { error: "One reaction a second, please." });
+    assert.deepEqual(await s.emitWithAck("react", { emoji: "🥚", videoTime: 2 }), { error: "Slow down a little." });
 
     // Fill the rest of the quota directly rather than waiting out the rate limit 49 times.
     for (let i = 1; i < REACTION_QUOTA; i++) {

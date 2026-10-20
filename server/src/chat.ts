@@ -10,7 +10,7 @@ export const MAX_MESSAGE_LENGTH = 500;
 export const REACTION_QUOTA = 50;
 const RATE_WINDOW_MS = 10_000;
 const RATE_MAX_MESSAGES = 5;
-const REACTION_MIN_INTERVAL_MS = 1_000;
+const REACTION_MIN_INTERVAL_MS = 250;
 const POSITION_MIN_INTERVAL_MS = 500;
 const MAX_VIDEO_SECONDS = 7 * 24 * 60 * 60;
 
@@ -156,7 +156,7 @@ export function attachChat(io: Server, config: Config, store: MessageStore, reac
       if (!isTime(p.videoTime)) return reply({ error: "Start the video before reacting." });
 
       const now = Date.now();
-      if (now - lastReactionAt < REACTION_MIN_INTERVAL_MS) return reply({ error: "One reaction a second, please." });
+      if (now - lastReactionAt < REACTION_MIN_INTERVAL_MS) return reply({ error: "Slow down a little." });
       lastReactionAt = now;
 
       const reaction: Reaction = { id: randomUUID(), videoId, emoji: p.emoji, videoTime: p.videoTime, createdAt: now };
