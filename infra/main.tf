@@ -189,6 +189,7 @@ resource "azurerm_container_app_environment" "main" {
   name                       = "${local.name}-cae"
   location                   = var.location
   resource_group_name        = data.azurerm_resource_group.workload.name
+  logs_destination           = "log-analytics" # azurerm 5 requires this explicitly
   log_analytics_workspace_id = data.azurerm_log_analytics_workspace.platform.id
 
   infrastructure_subnet_id = data.azurerm_subnet.apps.id
