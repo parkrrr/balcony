@@ -1,6 +1,52 @@
 import type { Reaction } from "./types";
 
-export const QUICK_PICKS = ["🍅", "🥚", "💩", "❤️", "😂", "👏"];
+const DEFAULT_PICKS = ["🍅", "🥚", "💩", "❤️", "😂", "👏"];
+const PICKS_KEY = "balcony.quickPicks";
+
+/** A quick-pick button, in display order. `usedAt` decides which one a new emoji replaces. */
+export interface QuickPick {
+  emoji: string;
+  usedAt: number;
+}
+
+// Defaults count as used in reverse order, so new emoji push out 👏 first and 🍅 last.
+const defaults = (): QuickPick[] => DEFAULT_PICKS.map((emoji, i) => ({ emoji, usedAt: -i }));
+
+export function readQuickPicks(): QuickPick[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(PICKS_KEY) ?? "null");
+    if (
+      Array.isArray(saved) &&
+      saved.length === DEFAULT_PICKS.length &&
+      saved.every((p) => isEmoji(p?.emoji) && typeof p.usedAt === "number")
+    ) {
+      return saved;
+    }
+  } catch {
+    // Unreadable or blocked storage: fall back to the defaults.
+  }
+  return defaults();
+}
+
+export function saveQuickPicks(picks: QuickPick[]): void {
+  try {
+    localStorage.setItem(PICKS_KEY, JSON.stringify(picks));
+  } catch {
+    // Not saved; the picks still apply for this visit.
+  }
+}
+
+/**
+ * Records a throw. A pick already on the bar stays where it is, so the buttons don't move
+ * under the cursor. A new emoji goes first and replaces the least recently used pick.
+ */
+export function recordQuickPick(picks: QuickPick[], emoji: string, now = Date.now()): QuickPick[] {
+  if (picks.some((p) => p.emoji === emoji)) {
+    return picks.map((p) => (p.emoji === emoji ? { emoji, usedAt: now } : p));
+  }
+  const stale = picks.reduce((a, b) => (b.usedAt < a.usedAt ? b : a));
+  return [{ emoji, usedAt: now }, ...picks.filter((p) => p !== stale)];
+}
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const PICTOGRAPHIC = /\p{Extended_Pictographic}/u;

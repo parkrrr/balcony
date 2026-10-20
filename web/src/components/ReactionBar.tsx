@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
-import { QUICK_PICKS, isEmoji } from "../reactions";
+import { isEmoji, readQuickPicks, recordQuickPick, saveQuickPicks } from "../reactions";
 import { EmojiPicker } from "./EmojiPicker";
 
 interface Props {
@@ -21,6 +21,7 @@ export function ReactionBar({ connected, show, onShowChange, onThrow }: Props) {
   const [busy, setBusy] = useState(false);
   const [custom, setCustom] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [picks, setPicks] = useState(readQuickPicks);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -37,7 +38,14 @@ export function ReactionBar({ connected, show, onShowChange, onThrow }: Props) {
     const err = await onThrow(emoji);
     setError(err);
     setTimeout(() => setBusy(false), COOLDOWN_MS);
-    return !err;
+    if (err) return false;
+    const now = Date.now();
+    setPicks((prev) => {
+      const next = recordQuickPick(prev, emoji, now);
+      saveQuickPicks(next);
+      return next;
+    });
+    return true;
   };
 
   const openMore = () => {
@@ -67,7 +75,7 @@ export function ReactionBar({ connected, show, onShowChange, onThrow }: Props) {
   return (
     <section className="reaction-bar" aria-label="Reactions">
       <div className="reaction-picks">
-        {QUICK_PICKS.map((emoji) => (
+        {picks.map(({ emoji }) => (
           <button key={emoji} type="button" className="reaction-pick" disabled={disabled} onClick={() => fire(emoji)} title={`Throw ${emoji}`}>
             {emoji}
           </button>
