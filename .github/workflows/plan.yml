@@ -1,0 +1,134 @@
+name: Plan
+
+# Plans a PR against live state and comments what would be added, changed or destroyed.
+# Runs on its own for same-repo PRs. Fork and Dependabot PRs get no secrets or OIDC token,
+# so plan those by hand: Actions > Plan > Run workflow, or `gh workflow run plan.yml -f pr=<n>`.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to plan
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    if: >-
+      github.event_name == 'workflow_dispatch' || (
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    # The landing zone only trusts this environment's OIDC subject. deployment: false keeps
+    # plans out of the environment's deployment history.
+    environment:
+      name: azure
+      deployment: false
+    concurrency:
+      group: plan-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: true
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+      GH_TOKEN: ${{ github.token }}
+      ARM_USE_OIDC: "true"
+      ARM_USE_CLI: "false"
+      ARM_USE_MSI: "false"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      # A manual run hands the PR's code the deploy identity, so it refuses PRs from forks.
+      - name: Check the PR
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: .
+        run: |
+          if [ "$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json isCrossRepository --jq .isCrossRepository)" != "false" ]; then
+            echo "::error::#$PR is from a fork (or doesn't exist); only same-repo PRs can be planned."
+            exit 1
+          fi
+
+      # A manual run plans the PR's own head commit; the workflow file still comes from the
+      # branch it was dispatched from (main by default).
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr) || '' }}
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: 1.10.0
+          tofu_wrapper: false
+
+      - name: tofu init
+        run: |
+          tofu init -input=false \
+            -backend-config="use_oidc=true" \
+            -backend-config="client_id=${ARM_CLIENT_ID}" \
+            -backend-config="tenant_id=${ARM_TENANT_ID}" \
+            -backend-config="subscription_id=${ARM_SUBSCRIPTION_ID}"
+
+      - name: tofu validate
+        run: tofu validate -no-color
+
+      # A PR's image is never built, so plan against the image that's live now. Otherwise every
+      # plan would show the container app changing just because the commit SHA did.
+      - name: Use the deployed image tag
+        run: |
+          image=$(tofu state pull | jq -r '.resources[] | select(.type == "azurerm_container_app" and .name == "main") | .instances[0].attributes.template[0].container[0].image')
+          tag=${image##*:}
+          echo "TF_VAR_image_tag=${tag:-$GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      # Plans only read state, so skip the lock rather than queue behind (or block) a deploy.
+      - name: tofu plan
+        run: tofu plan -input=false -no-color -lock=false -out=tfplan
+
+      # One comment per PR, updated in place on each run.
+      - name: Comment plan
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          sha=${HEAD_SHA:-$(git rev-parse HEAD)}
+          marker='<!-- tofu-plan -->'
+          body=$(tofu show -json tfplan | jq -r --arg marker "$marker" --arg run "$RUN_URL" --arg sha "${sha::7}" '
+            [.resource_changes[]? | {address, actions: (.change.actions | sort)}] as $all
+            | def pick($a): [$all[] | select(.actions == ($a | sort)) | .address];
+              def section($title; $list):
+                if ($list | length) > 0 then "\n**\($title)**\n" + ($list | map("- `\(.)`") | join("\n")) + "\n" else empty end;
+            pick(["create"]) as $add | pick(["update"]) as $change
+            | pick(["delete"]) as $destroy | pick(["create", "delete"]) as $replace
+            | $marker,
+              "### OpenTofu plan",
+              if ($add + $change + $destroy + $replace | length) == 0 then "\nNo changes." else
+                "\n\($add + $replace | length) to add, \($change | length) to change, \($destroy + $replace | length) to destroy.",
+                section("Added"; $add),
+                section("Changed"; $change),
+                section("Replaced"; $replace),
+                section("Destroyed"; $destroy)
+              end,
+              "\n<sub>Commit \($sha), planned with the deployed image. [Full plan](\($run))</sub>"
+          ')
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
+          fi
