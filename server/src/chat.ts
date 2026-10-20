@@ -4,6 +4,7 @@ import type { Server, Socket } from "socket.io";
 import type { Config } from "./config.js";
 import { readSession, type User } from "./session.js";
 import type { ChatMessage, MessageStore, Reaction, ReactionStore } from "./store.js";
+import { failed, traced } from "./tracing.js";
 
 export const HISTORY_LIMIT = 100;
 export const MAX_MESSAGE_LENGTH = 500;
@@ -102,23 +103,29 @@ export function attachChat(io: Server, config: Config, store: MessageStore, reac
     // Ask everyone already here to report their position now rather than on their next heartbeat.
     socket.to(room).emit("who");
 
-    store.recent(videoId, HISTORY_LIMIT).then(
-      (messages) => socket.emit("history", messages),
-      (err) => {
-        console.error("Loading history failed", err);
-        socket.emit("history", []);
-      },
-    );
+    // Both loads share one span, so a slow join shows up as one request.
+    void traced("join", () =>
+      Promise.all([
+        store.recent(videoId, HISTORY_LIMIT).then(
+          (messages) => socket.emit("history", messages),
+          (err) => {
+            failed(err);
+            console.error("Loading history failed", err);
+            socket.emit("history", []);
+          },
+        ),
+        reactions.forVideo(videoId).then(
+          (all) => socket.emit("reactions", all.map(toPublic)),
+          (err) => {
+            failed(err);
+            console.error("Loading reactions failed", err);
+            socket.emit("reactions", []);
+          },
+        ),
+      ]),
+    )();
 
-    reactions.forVideo(videoId).then(
-      (all) => socket.emit("reactions", all.map(toPublic)),
-      (err) => {
-        console.error("Loading reactions failed", err);
-        socket.emit("reactions", []);
-      },
-    );
-
-    socket.on("chat", async (payload: unknown, ack?: ChatAck) => {
+    socket.on("chat", traced("chat", async (payload: unknown, ack?: ChatAck) => {
       const reply: ChatAck = typeof ack === "function" ? ack : () => {};
       const p = (payload ?? {}) as { text?: unknown; videoTime?: unknown };
       const text = typeof p.text === "string" ? p.text.trim() : "";
@@ -142,14 +149,15 @@ export function attachChat(io: Server, config: Config, store: MessageStore, reac
       try {
         await store.add(message);
       } catch (err) {
+        failed(err);
         console.error("Saving message failed", err);
         return reply({ error: "Couldn't send that message. Try again." });
       }
       io.to(room).emit("chat", message);
       reply({ ok: true });
-    });
+    }));
 
-    socket.on("react", async (payload: unknown, ack?: ReactAck) => {
+    socket.on("react", traced("react", async (payload: unknown, ack?: ReactAck) => {
       const reply: ReactAck = typeof ack === "function" ? ack : () => {};
       const p = (payload ?? {}) as { emoji?: unknown; videoTime?: unknown };
       if (!isEmoji(p.emoji)) return reply({ error: "That isn't a single emoji." });
@@ -167,12 +175,13 @@ export function attachChat(io: Server, config: Config, store: MessageStore, reac
         }
         await reactions.add(reaction, user.id);
       } catch (err) {
+        failed(err);
         console.error("Saving reaction failed", err);
         return reply({ error: "Couldn't send that reaction. Try again." });
       }
       socket.to(room).emit("reaction", toPublic(reaction));
       reply({ ok: true, reaction: toPublic(reaction) });
-    });
+    }));
 
     socket.on("position", (payload: unknown) => {
       const p = (payload ?? {}) as { t?: unknown; playing?: unknown; rate?: unknown };

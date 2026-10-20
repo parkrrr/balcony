@@ -18,4 +18,5 @@ COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 USER node
 EXPOSE 8080
-CMD ["node", "server/dist/index.js"]
+# The loader and telemetry.js must run before the app loads, so its modules can be instrumented.
+CMD ["node", "--import", "@azure/monitor-opentelemetry/loader", "--import", "./server/dist/telemetry.js", "server/dist/index.js"]
