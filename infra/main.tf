@@ -205,6 +205,20 @@ resource "azurerm_container_app_environment" "main" {
   tags = local.tags
 }
 
+# --- Monitoring ------------------------------------------------------------
+
+# Stores its data in the platform workspace, so telemetry is kept for that workspace's 30 days.
+resource "azurerm_application_insights" "main" {
+  name                = "${local.name}-appi"
+  location            = var.location
+  resource_group_name = data.azurerm_resource_group.workload.name
+  workspace_id        = data.azurerm_log_analytics_workspace.platform.id
+  application_type    = "Node.JS"
+  # A backstop on top of the app's sampling: ~3 GB a month at most, inside Log Analytics' free 5 GB.
+  daily_data_cap_in_gb = 0.1
+  tags                 = local.tags
+}
+
 resource "random_password" "session" {
   length  = 48
   special = false
@@ -237,6 +251,13 @@ resource "azurerm_container_app" "main" {
   secret {
     name  = "session-secret"
     value = random_password.session.result
+  }
+
+  # Its key can only send telemetry. Signing in with the app's identity instead would need a
+  # Monitoring Metrics Publisher role assignment, which the deploy identity can't grant.
+  secret {
+    name  = "appinsights-connection-string"
+    value = azurerm_application_insights.main.connection_string
   }
 
   ingress {
@@ -284,6 +305,15 @@ resource "azurerm_container_app" "main" {
       env {
         name  = "AZURE_CLIENT_ID"
         value = azurerm_user_assigned_identity.app.client_id
+      }
+      env {
+        name        = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+        secret_name = "appinsights-connection-string"
+      }
+      # The role name Application Insights shows for this app.
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = "balcony"
       }
 
       liveness_probe {

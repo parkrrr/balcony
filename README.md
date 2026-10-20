@@ -41,8 +41,11 @@ Everything goes into `alz-balcony-rg`, created by the landing zone (`alz-parkrrr
 | Cosmos DB (serverless) | Public access off, local (key) auth off, private endpoint in `alz-pep-snet`, Entra data-plane role for the app |
 | Container Registry (Basic) | Public endpoint (private endpoints need Premium), admin user off, AcrPull via managed identity |
 | User-assigned identity | The app's identity for ACR pulls and Cosmos access |
+| Application Insights | Stores its data in the platform Log Analytics workspace, with a 0.1 GB daily cap |
 
-Logs go to the platform Log Analytics workspace. The Google client secret and the generated session secret are stored as Container Apps secrets.
+Logs go to the platform Log Analytics workspace. The Google client secret, the generated session secret and the Application Insights connection string are stored as Container Apps secrets.
+
+**Telemetry.** The server sends requests, Cosmos DB calls, exceptions and metrics to Application Insights (`server/src/telemetry.ts`, using `@azure/monitor-opentelemetry`). It's loaded with `node --import` before the app, because ES modules can only be instrumented if the hooks are in place before they load. Socket.IO `join`, `chat` and `react` events show up as requests named `socket <event>` (`server/src/tracing.ts`). `position` events are too frequent to be worth recording, and `/healthz` probes and `/assets` files aren't recorded either. Sampling keeps at most 5 traces a second. Requests are named by path, never including the query string. Without `APPLICATIONINSIGHTS_CONNECTION_STRING` nothing is sent, so local runs and tests are unaffected.
 
 ### First deploy
 
@@ -69,6 +72,7 @@ Roughly $13–18/month at low traffic: about $7.30 for the Cosmos private endpoi
 | Container images | Newest 5 | A CI step after each successful deploy deletes older tags |
 | Inactive app revisions | Newest 5 | `max_inactive_revisions` on the container app |
 | App logs | 30 days | The landing zone's Log Analytics workspace |
+| Telemetry (Application Insights) | 30 days | Stored in the same workspace; IP addresses are masked |
 | Sessions | 7 days | Signed cookie; nothing stored server-side |
 | Video titles (most reacted) | 6 hours | In process memory only |
 
